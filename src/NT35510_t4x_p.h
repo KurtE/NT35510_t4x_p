@@ -173,8 +173,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     void pushPixels16bit(const uint16_t *pcolors, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2);
     void pushPixels16bitDMA(const uint16_t *pcolors, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2);
 
-    uint8_t readCommand(uint8_t const cmd);
-    uint32_t readCommandN(uint8_t const cmd, uint8_t count_bytes);
+    uint8_t readCommand(uint16_t const cmd);
+    uint32_t readCommandN(uint16_t const cmd, uint8_t count_bytes);
 
     // Added functions to read pixel data...
     // uint16_t readPixel(int16_t x, int16_t y);
@@ -349,6 +349,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     void FlexIO_Config_MultiBeat();
     void FlexIO_Config_SnglBeat_Read();
 
+    void writeRegM(uint16_t cmd, uint8_t len, uint8_t data[]);
     void write_command_and_data(uint32_t cmd, uint8_t val);
     void output_command_helper(uint32_t cmd);
     void SglBeatWR_nPrm_8(uint32_t const cmd, uint8_t const *value, uint32_t const length);

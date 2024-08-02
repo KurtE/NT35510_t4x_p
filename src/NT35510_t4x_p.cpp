@@ -123,7 +123,8 @@ FLASHMEM uint8_t NT35510_t4x_p::setBitDepth(uint8_t bitDepth) {
         bd = 0x66;
         break;
     case 24: // Unsupported
-        return _bitDepth;
+        _bitDepth = 24;
+        bd = 0x77;
         break;
     default: // Unsupported
         return _bitDepth;
@@ -364,15 +365,93 @@ FASTRUN void NT35510_t4x_p::pushPixels16bitDMA(const uint16_t *pcolors, uint16_t
 ///////////////////
 FLASHMEM void NT35510_t4x_p::displayInit(uint8_t disp_name) {
     Serial.print("displayInit called\n");
-        MADCTL[0] = MADCTL_MX | MADCTL_MY | MADCTL_RGB;
-        MADCTL[1] = MADCTL_MV | MADCTL_MY | MADCTL_RGB;
-        MADCTL[2] = MADCTL_RGB;
-        MADCTL[3] = MADCTL_MX | MADCTL_MV | MADCTL_RGB;
-        Serial.print("HX8357D Initialized\n");
 
     // Start of hard coded like BuyDisplay code:
 
    //35510h 
+#if 1
+    while (WR_AsyncTransferDone == false) {
+        // Wait for any DMA transfers to complete
+    }
+
+    FlexIO_Config_SnglBeat();
+    /* Assert CS, RS pins */
+
+    // delay(1);
+    CSLow();
+  uint8_t ini01[] = {0x55, 0xAA, 0x52, 0x08, 0x01};
+  writeRegM(0xF000, sizeof(ini01), ini01);
+  uint8_t ini03[] = {0x34, 0x34, 0x34};
+  writeRegM(0xB600, sizeof(ini03), ini03);
+  uint8_t ini02[] = {0x0D, 0x0D, 0x0D};
+  writeRegM(0xB000, sizeof(ini02), ini02); // AVDD Set AVDD 5.2V
+  uint8_t ini05[] = {0x34, 0x34, 0x34};
+  writeRegM(0xB700, sizeof(ini05), ini05); // AVEE ratio
+  uint8_t ini04[] = {0x0D, 0x0D, 0x0D};
+  writeRegM(0xB100, sizeof(ini04), ini04); // AVEE  -5.2V
+  uint8_t ini07[] = {0x24, 0x24, 0x24};
+  writeRegM(0xB800, sizeof(ini07), ini07); // VCL ratio
+  uint8_t ini10[] = {0x34, 0x34, 0x34};
+  writeRegM(0xB900, sizeof(ini10), ini10); // VGH  ratio
+  uint8_t ini09[] = {0x0F, 0x0F, 0x0F};
+  writeRegM(0xB300, sizeof(ini09), ini09);
+  uint8_t ini14[] = {0x24, 0x24, 0x24};
+  writeRegM(0xBA00, sizeof(ini14), ini14); // VGLX  ratio
+  uint8_t ini12[] = {0x08, 0x08};
+  writeRegM(0xB500, sizeof(ini12), ini12);
+  uint8_t ini15[] = {0x00, 0x78, 0x00};
+  writeRegM(0xBC00, sizeof(ini15), ini15); // VGMP/VGSP 4.5V/0V
+  uint8_t ini16[] = {0x00, 0x78, 0x00};
+  writeRegM(0xBD00, sizeof(ini16), ini16); // VGMN/VGSN -4.5V/0V
+  uint8_t ini17[] = {0x00, 0x89};
+  writeRegM(0xBE00, sizeof(ini17), ini17); // VCOM  -1.325V
+  // Gamma Setting
+  uint8_t ini20[] = {
+      0x00, 0x2D, 0x00, 0x2E, 0x00, 0x32, 0x00, 0x44, 0x00, 0x53, 0x00, 0x88, 0x00, 0xB6, 0x00, 0xF3, 0x01, 0x22, 0x01, 0x64,
+      0x01, 0x92, 0x01, 0xD4, 0x02, 0x07, 0x02, 0x08, 0x02, 0x34, 0x02, 0x5F, 0x02, 0x78, 0x02, 0x94, 0x02, 0xA6, 0x02, 0xBB,
+      0x02, 0xCA, 0x02, 0xDB, 0x02, 0xE8, 0x02, 0xF9, 0x03, 0x1F, 0x03, 0x7F};
+  writeRegM(0xD100, sizeof(ini20), ini20);
+  writeRegM(0xD400, sizeof(ini20), ini20); // R+ R-
+  writeRegM(0xD200, sizeof(ini20), ini20);
+  writeRegM(0xD500, sizeof(ini20), ini20); // G+ G-
+  writeRegM(0xD300, sizeof(ini20), ini20);
+  writeRegM(0xD600, sizeof(ini20), ini20); // B+ B-
+  //
+  uint8_t ini21[] = {0x55, 0xAA, 0x52, 0x08, 0x00};
+  writeRegM(0xF000, sizeof(ini21), ini21); // #Enable Page0
+  uint8_t ini22[] = {0x08, 0x05, 0x02, 0x05, 0x02};
+  writeRegM(0xB000, sizeof(ini22), ini22); // # RGB I/F Setting
+
+  uint8_t ini23[] = {0x08};
+  writeRegM(0xB600, sizeof(ini23), ini23); 
+  
+  uint8_t ini23a[] = {0x50};
+  writeRegM(0xB500, sizeof(ini23a), ini23a); 
+  uint8_t ini24[] = {0x00, 0x00};
+  writeRegM(0xB700, sizeof(ini24), ini24); // ## Gate EQ:
+  uint8_t ini25[] = {0x01, 0x05, 0x05, 0x05};
+  writeRegM(0xB800, sizeof(ini25), ini25); // ## Source EQ:
+  uint8_t ini26[] = {0x00, 0x00, 0x00};
+  writeRegM(0xBC00, sizeof(ini26), ini26); // # Inversion: Column inversion (NVT)
+  uint8_t ini27[] = {0x03, 0x00, 0x00};
+  writeRegM(0xCC00, sizeof(ini27), ini27); // # BOE's Setting(default)
+  uint8_t ini28[] = {0x01, 0x84, 0x07, 0x31, 0x00, 0x01};
+  writeRegM(0xBD00, sizeof(ini28), ini28); // # Display Timing:
+  //
+  uint8_t ini30[] = {0xAA, 0x55, 0x25, 0x01};
+  writeRegM(0xFF00, sizeof(ini30), ini30);
+
+  uint8_t ini31[] = {0x00};
+  writeRegM(NT35510_TEON, sizeof(ini31), ini31);
+  uint8_t ini32[] = {0x55};
+  writeRegM(NT35510_COLMOD, sizeof(ini32), ini32);
+
+  output_command_helper(NT35510_SLPOUT);
+  CSHigh();
+
+
+
+#else        
     write_command_and_data(0xF000, 0x55);
     write_command_and_data(0xF001, 0xAA);
     write_command_and_data(0xF002, 0x52);
@@ -810,7 +889,7 @@ FLASHMEM void NT35510_t4x_p::displayInit(uint8_t disp_name) {
   write_command_and_data(0x3A00, 0x55); //Data format 16-Bits
   write_command_and_data(0x3600, 0x00);   
 
-
+#endif
   SglBeatWR_nPrm_8(0x1100, nullptr, 0);   //StartUp  
   
   delay(120);
@@ -1092,25 +1171,15 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat_Read() {
     DBGPrintf("NT35510_t4x_p::FlexIO_Config_SnglBeat_Read - Exit\n");
 }
 
-FASTRUN uint8_t NT35510_t4x_p::readCommand(uint8_t const cmd) {
+FASTRUN uint8_t NT35510_t4x_p::readCommand(uint16_t const cmd) {
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
 
     FlexIO_Config_SnglBeat();
     CSLow();
-    DCLow();
+    output_command_helper(cmd);
 
-    /* Write command index */
-    p->SHIFTBUF[_write_shifter] = generate_output_word(cmd);
-
-    /*Wait for transfer to be completed */
-    waitWriteShiftStat(__LINE__);
-    waitTimStat(__LINE__);
-
-    /* De-assert RS pin */
-    microSecondDelay();
-    DCHigh();
 
     FlexIO_Clear_Config_SnglBeat();
     FlexIO_Config_SnglBeat_Read();
@@ -1136,25 +1205,14 @@ FASTRUN uint8_t NT35510_t4x_p::readCommand(uint8_t const cmd) {
 };
 
 // Note we could combine the above with thsi.
-FASTRUN uint32_t NT35510_t4x_p::readCommandN(uint8_t const cmd, uint8_t count_bytes) {
+FASTRUN uint32_t NT35510_t4x_p::readCommandN(uint16_t const cmd, uint8_t count_bytes) {
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
 
     FlexIO_Config_SnglBeat();
     CSLow();
-    DCLow();
-
-    /* Write command index */
-    p->SHIFTBUF[_write_shifter] = generate_output_word(cmd);
-
-    /*Wait for transfer to be completed */
-    waitWriteShiftStat(__LINE__);
-    waitTimStat(__LINE__);
-
-    /* De-assert RS pin */
-    microSecondDelay();
-    DCHigh();
+    output_command_helper(cmd);
 
     FlexIO_Clear_Config_SnglBeat();
     FlexIO_Config_SnglBeat_Read();
@@ -1392,6 +1450,17 @@ FASTRUN void NT35510_t4x_p::write_command_and_data(uint32_t cmd, uint8_t val) {
 
 //--------------------------------------------------------------------
 // Helper function to handle 16 bit cmds depending on bus width
+void NT35510_t4x_p::writeRegM(uint16_t addr, uint8_t len, uint8_t data[]) {
+  for (uint16_t i = 0; i < len; i++)
+  {
+    output_command_helper(addr++);
+    p->SHIFTBUF[_write_shifter] = generate_output_word(*data++);
+    waitWriteShiftStat(__LINE__);
+    waitTimStat(__LINE__);
+  }    
+}
+
+
 FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
     DCLow();
 

@@ -38,6 +38,7 @@
 
 //Adafruit_GFX_Button button;
 
+
 // Let's allocate the frame buffer ourself.
 //DMAMEM uint16_t tft_frame_buffer[NT35510_TFTWIDTH * NT35510_TFTHEIGHT];
 
@@ -45,6 +46,7 @@ uint8_t use_dma = 0;
 uint8_t use_clip_rect = 0;
 uint8_t use_set_origin = 0;
 uint8_t use_fb = 0;
+uint8_t *tft_frame_buffer = nullptr;
 
 #define ORIGIN_TEST_X 50
 #define ORIGIN_TEST_Y 50
@@ -94,13 +96,15 @@ void setup() {
 //tft.setFlexIOPins(7, 8);
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
+    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
     Serial.print("DEVBRD5 - ");
-
+    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
     Serial.print("Teensy4.1 - ");
+    tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * 2 + 32);
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
@@ -108,7 +112,10 @@ void setup() {
     tft.setBitDepth(16);
 
     tft.displayInfo();
-    //  tft.setFrameBuffer(tft_frame_buffer);
+
+    // Frame buffer will not fit work with malloc see if 
+    if (tft_frame_buffer) tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) &
+                                   ~((uintptr_t)(31))));
 
     tft.setRotation(ROTATION);
     tft.fillScreen(NT35510_BLACK);
