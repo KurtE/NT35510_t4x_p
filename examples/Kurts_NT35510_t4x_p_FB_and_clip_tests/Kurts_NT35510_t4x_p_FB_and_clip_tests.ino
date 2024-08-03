@@ -30,7 +30,7 @@
 #include <Fonts/FreeMonoBoldOblique12pt7b.h>
 #include <Fonts/FreeSerif12pt7b.h>
 
-#define ROTATION 0
+#define ROTATION 1
 
 #define KURTS_MICROMOD
 
@@ -169,7 +169,7 @@ void SetupOrClearClipRectAndOffsets() {
 
 
 uint16_t palette[256];  // Should probably be 256, but I don't use many colors...
-uint16_t pixel_data[2500];
+uint16_t pixel_data[12000];
 const uint8_t pict1bpp[] = { 0xff, 0xff, 0xc0, 0x03, 0xa0, 0x05, 0x90, 0x9, 0x88, 0x11, 0x84, 0x21, 0x82, 0x41, 0x81, 0x81,
                              0x81, 0x81, 0x82, 0x41, 0x84, 0x21, 0x88, 0x11, 0x90, 0x09, 0xa0, 0x05, 0xc0, 0x03, 0xff, 0xff };
 const uint8_t pict2bpp[] = {
@@ -224,10 +224,10 @@ void drawTestScreen() {
     tft.fillRectHGradient(200, 150, 50, 50, NT35510_YELLOW, NT35510_GREEN);
 
 // Try a read rect and write rect
-#define BAND_WIDTH 8
-#define BAND_HEIGHT 20
+#define BAND_WIDTH 30
+#define BAND_HEIGHT 50
 #define BAND_START_X 200
-#define BAND_START_Y 259
+#define BAND_START_Y 300
 
     tft.fillRect(BAND_START_X + BAND_WIDTH * 0, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, NT35510_RED);
     tft.fillRect(BAND_START_X + BAND_WIDTH * 1, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, NT35510_GREEN);

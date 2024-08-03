@@ -83,11 +83,11 @@ FLASHMEM void NT35510_t4x_p::begin(uint8_t display_name, uint8_t baud_speed_mhz)
     digitalWriteFast(_dc, HIGH);
     digitalWriteFast(_rst, HIGH);
 
-    delay(15);
+    delay(200);
     digitalWrite(_rst, LOW);
-    delay(15);
+    delay(800);
     digitalWriteFast(_rst, HIGH);
-    delay(100);
+    delay(800);
 
     FlexIO_Init();
 
@@ -131,7 +131,8 @@ FLASHMEM uint8_t NT35510_t4x_p::setBitDepth(uint8_t bitDepth) {
         break;
     }
 
-    SglBeatWR_nPrm_8(NT35510_COLMOD, &bd, 1);
+    //SglBeatWR_nPrm_8(NT35510_COLMOD, &bd, 1);
+    write_command_and_data(NT35510_COLMOD, bd);
 
     // Insert small delay here as rapid calls appear to fail
     delay(10);
@@ -244,7 +245,7 @@ FLASHMEM void NT35510_t4x_p::setRotation(uint8_t r) {
             _height = _TFTHEIGHT;
             break;
         case 1:
-            m       |= (MADCTL_MV | MADCTL_MX);
+            m      |= (MADCTL_MV | MADCTL_MX);
             _width  = _TFTHEIGHT;
             _height = _TFTWIDTH;
             break;
@@ -266,8 +267,9 @@ FLASHMEM void NT35510_t4x_p::setRotation(uint8_t r) {
 
     cursor_x = 0;
     cursor_y = 0;
-
-    SglBeatWR_nPrm_8(NT35510_MADCTL, &m, 1);
+    //uint8_t  am[2] = {0, m};
+    //SglBeatWR_nPrm_8(NT35510_MADCTL, am, 2);
+    write_command_and_data(NT35510_MADCTL, m);
 }
 
 void NT35510_t4x_p::setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
@@ -1444,8 +1446,27 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
     DBGPrintf("NT35510_t4x_p::FlexIO_Config_MultiBeat() - Exit\n");
 }
 
+
 FASTRUN void NT35510_t4x_p::write_command_and_data(uint32_t cmd, uint8_t val) {
-    SglBeatWR_nPrm_8(cmd, &val, 1);
+    //Serial.printf("WCD: %x %x\n", cmd, val);
+    FlexIO_Config_SnglBeat();
+    /* Assert CS, RS pins */
+
+    // delay(1);
+    output_command_helper(cmd);
+    microSecondDelay();
+
+    CSLow();
+    DCHigh();
+    microSecondDelay();
+    p->SHIFTBUF[_write_shifter] = 0;
+    waitWriteShiftStat(__LINE__);
+
+    p->SHIFTBUF[_write_shifter] = generate_output_word(val);
+    waitWriteShiftStat(__LINE__);
+    waitTimStat(__LINE__);
+    microSecondDelay();
+    CSHigh();
 }
 
 //--------------------------------------------------------------------
@@ -1453,15 +1474,28 @@ FASTRUN void NT35510_t4x_p::write_command_and_data(uint32_t cmd, uint8_t val) {
 void NT35510_t4x_p::writeRegM(uint16_t addr, uint8_t len, uint8_t data[]) {
   for (uint16_t i = 0; i < len; i++)
   {
+#if 1
+    write_command_and_data(addr++, *data++);
+#else    
     output_command_helper(addr++);
+    microSecondDelay();
+    CSLow();
+    DCHigh();
+    microSecondDelay();
+    p->SHIFTBUF[_write_shifter] = 0;
+    waitWriteShiftStat(__LINE__);
     p->SHIFTBUF[_write_shifter] = generate_output_word(*data++);
     waitWriteShiftStat(__LINE__);
     waitTimStat(__LINE__);
+    microSecondDelay();
+    CSHigh();
+#endif
   }    
 }
 
 
 FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
+    CSLow();
     DCLow();
 
     /* Write command index */
@@ -1471,7 +1505,7 @@ FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
     } else {
         p->SHIFTBUF[_write_shifter] = generate_output_word(cmd >> 8);  // high byte
         waitWriteShiftStat(__LINE__);
-        waitTimStat(__LINE__);
+        //waitTimStat(__LINE__);
         p->SHIFTBUF[_write_shifter] = generate_output_word(cmd);  // low byte
     }
 
@@ -1483,10 +1517,11 @@ FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
 
     microSecondDelay();
     DCHigh();
+    CSHigh();
 }
 
 FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *value = NULL, uint32_t const length = 0) {
-    DBGPrintf("NT35510_t4x_p::SglBeatWR_nPrm_8(%x, %x, %u\n", cmd, value, length);
+    Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_8(%x, %x, %u\n", cmd, value, length);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
@@ -1520,9 +1555,9 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
     FlexIO_Config_SnglBeat();
     uint16_t buf;
     /* Assert CS, RS pins */
-    CSLow();
     output_command_helper(cmd);
     microSecondDelay();
+    CSLow();
 
     if (length) {
         for (uint32_t i = 0; i < length - 1U; i++) {
@@ -1776,9 +1811,9 @@ void NT35510_t4x_p::beginWrite16BitColors() {
     DBGPrintf("NT35510_t4x_p::beginWrite16BitColors() - 0x2c\n");
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
-    CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
+    CSLow();
 }
 
 void NT35510_t4x_p::write16BitColor(uint16_t color) {
@@ -1818,9 +1853,9 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
 
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
-    CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
+    CSLow();
     while (length-- > 1) {
         waitWriteShiftStat(__LINE__);
         p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
@@ -1836,11 +1871,11 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     p->TIMSTAT |= _flexio_timer_mask;
 
     p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+    CSHigh();
 
     /*Wait for transfer to be completed */
     waitTimStat(__LINE__);
     microSecondDelay();
-    CSHigh();
 }
 
 void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors) {

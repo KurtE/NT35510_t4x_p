@@ -94,28 +94,28 @@ void setup() {
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
     tft.setBitDepth(16);
-    tft.setRotation(4);
+    tft.setRotation(0);
     tft.fillScreen(NT35510_BLACK);
 
     tft.setTextColor(NT35510_WHITE);
-    tft.setFont(Arial_12);
-    tft.println("Arial_12");
+    tft.setFont(Arial_24);
+    tft.println("Arial_24");
     displayStuff();
 
     tft.setTextColor(NT35510_YELLOW);
-    tft.setFont(Arial_12_Bold);
-    tft.println("ArialBold 12");
+    tft.setFont(Arial_24_Bold);
+    tft.println("ArialBold 24");
     displayStuff();
     nextPage();
     tft.setTextColor(NT35510_GREEN);
-    tft.setFont(ComicSansMS_12);
-    tft.println("ComicSansMS 12");
+    tft.setFont(ComicSansMS_24);
+    tft.println("ComicSansMS 24");
     displayStuff();
 
 
     tft.setTextColor(NT35510_WHITE);
-    tft.setFont(DroidSans_12);
-    tft.println("DroidSans_12");
+    tft.setFont(DroidSans_24);
+    tft.println("DroidSans_24");
     displayStuff();
     nextPage();
 
