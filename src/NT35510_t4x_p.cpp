@@ -1179,8 +1179,8 @@ FASTRUN uint8_t NT35510_t4x_p::readCommand(uint16_t const cmd) {
     }
 
     FlexIO_Config_SnglBeat();
-    CSLow();
     output_command_helper(cmd);
+    CSLow();
 
 
     FlexIO_Clear_Config_SnglBeat();
@@ -1213,8 +1213,8 @@ FASTRUN uint32_t NT35510_t4x_p::readCommandN(uint16_t const cmd, uint8_t count_b
     }
 
     FlexIO_Config_SnglBeat();
-    CSLow();
     output_command_helper(cmd);
+    CSLow();
 
     FlexIO_Clear_Config_SnglBeat();
     FlexIO_Config_SnglBeat_Read();
@@ -1903,11 +1903,11 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     // now set to ramRD command
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
-    CSLow();
 
     /* Write command index */
     DBGPrintf("\tOutput NT35510_RAMRD\n");
     output_command_helper(NT35510_RAMRD);
+    CSLow();
     microSecondDelay();
     // delayMicroseconds(50);
 
@@ -1958,6 +1958,13 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
             b = read_shiftbuf_byte();
 
             *pcolors++ = color565(r, g, b);
+            #ifdef DEBUG
+            static uint8_t debug_count = 50;
+            if (debug_count) {
+                debug_count--;
+                Serial.printf("RRFIO %x %x %x - %x\n", r, g, b, pcolors[-1]);
+            }
+            #endif
         }
     //}
 

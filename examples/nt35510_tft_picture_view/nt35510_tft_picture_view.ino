@@ -63,6 +63,7 @@
 #define TFT_CS 1
 #define TFT_RST 2
 #elif defined(ARDUINO_TEENSY_DEVBRD4) || defined(ARDUINO_TEENSY_DEVBRD5)
+extern "C" bool sdram_begin(uint8_t external_sdram_size, uint8_t clock, uint8_t useDQS);
 #define TFT_DC 10
 #define TFT_CS 11
 #define TFT_RST 12
@@ -224,8 +225,10 @@ void setup(void) {
     g_tft_height = tft.height();
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
+    sdram_begin(32, 166, 1);
     tft_frame_buffer = (uint16_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
+    sdram_begin(32, 166, 1);
     Serial.print("DEVBRD5 - ");
     tft_frame_buffer = (uint16_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
 #elif defined(ARDUINO_TEENSY_MICROMOD)
