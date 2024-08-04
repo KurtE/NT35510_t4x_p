@@ -295,6 +295,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     IMXRT_FLEXIO_t *p;
     const FlexIOHandler::FLEXIO_Hardware_t *hw;
     static DMAChannel flexDma;
+    static DMASetting _dmaSettings[2];
 
     uint8_t _baud_div = 20;
 

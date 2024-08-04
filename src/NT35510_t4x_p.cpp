@@ -1601,6 +1601,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc, const char *psz_title) {
 
 NT35510_t4x_p *NT35510_t4x_p::dmaCallback = nullptr;
 DMAChannel NT35510_t4x_p::flexDma;
+DMASetting NT35510_t4x_p::_dmaSettings[2];
 
 FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *value, uint32_t const length) {
     DBGPrintf("NT35510_t4x_p::MulBeatWR_nPrm_DMA(%x, %x, %u\n", cmd, value, length);
@@ -1612,8 +1613,8 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
     uint32_t destinationModulo = 31 - (__builtin_clz(SHIFTNUM * sizeof(uint32_t))); // defines address range for circular DMA destination buffer
 
     FlexIO_Config_SnglBeat();
-    CSLow();
     output_command_helper(cmd);
+    CSLow();
     microSecondDelay();
 
     if (length < 8) {
@@ -1673,24 +1674,81 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
         destinationAddressOffset = -sizeof(uint32_t);                              // write words in reverse order
         destinationAddressLastOffset = 0;
 
-        flexDma.TCD->SADDR = sourceAddress;
-        flexDma.TCD->SOFF = sourceAddressOffset;
-        flexDma.TCD->SLAST = sourceAddressLastOffset;
-        flexDma.TCD->DADDR = destinationAddress;
-        flexDma.TCD->DOFF = destinationAddressOffset;
-        flexDma.TCD->DLASTSGA = destinationAddressLastOffset;
-        flexDma.TCD->ATTR =
-            DMA_TCD_ATTR_SMOD(0U) | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT)                   // 16bit reads
-            | DMA_TCD_ATTR_DMOD(destinationModulo) | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
-        flexDma.TCD->NBYTES_MLOFFYES =
-            DMA_TCD_NBYTES_SMLOE | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset) | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
-        flexDma.TCD->CITER = majorLoopCount; // Current major iteration count
-        flexDma.TCD->BITER = majorLoopCount; // Starting major iteration count
+         if (majorLoopCount <= 32767) {
+            flexDma.TCD->SADDR = sourceAddress;
+            flexDma.TCD->SOFF = sourceAddressOffset;
+            flexDma.TCD->SLAST = sourceAddressLastOffset;
+            flexDma.TCD->DADDR = destinationAddress;
+            flexDma.TCD->DOFF = destinationAddressOffset;
+            flexDma.TCD->DLASTSGA = destinationAddressLastOffset;
+            flexDma.TCD->ATTR =
+                DMA_TCD_ATTR_SMOD(0U) | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT)                   // 16bit reads
+                | DMA_TCD_ATTR_DMOD(destinationModulo) | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
+            flexDma.TCD->NBYTES_MLOFFYES =
+                DMA_TCD_NBYTES_SMLOE | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset) | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
+            flexDma.TCD->CITER = majorLoopCount; // Current major iteration count
+            flexDma.TCD->BITER = majorLoopCount; // Starting major iteration count
 
-        flexDma.triggerAtHardwareEvent(hw->shifters_dma_channel[SHIFTER_DMA_REQUEST]);
-        flexDma.disableOnCompletion();
-        flexDma.interruptAtCompletion();
-        flexDma.clearComplete();
+            flexDma.triggerAtHardwareEvent(hw->shifters_dma_channel[SHIFTER_DMA_REQUEST]);
+            flexDma.disableOnCompletion();
+            flexDma.interruptAtCompletion();
+            flexDma.clearComplete();
+            #ifdef DEBUG
+            dumpDMA_TCD(&flexDma, "NT35510_t4x_p)\n");
+            #endif
+        } else {
+                // Too big to fit into one DMASetting.
+            // Too big to fit into one...  
+            uint32_t half_major_loop_count = majorLoopCount / 2;      
+            _dmaSettings[0].TCD->SADDR = sourceAddress;
+            _dmaSettings[0].TCD->SOFF = sourceAddressOffset;
+            _dmaSettings[0].TCD->SLAST = sourceAddressLastOffset;
+            _dmaSettings[0].TCD->DADDR = destinationAddress;
+            _dmaSettings[0].TCD->DOFF = destinationAddressOffset;
+            _dmaSettings[0].TCD->DLASTSGA = destinationAddressLastOffset;
+            _dmaSettings[0].TCD->ATTR =
+                DMA_TCD_ATTR_SMOD(0U)
+                | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT) // 16bit reads
+                | DMA_TCD_ATTR_DMOD(destinationModulo)
+                | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
+            _dmaSettings[0].TCD->NBYTES_MLOFFYES = 
+                DMA_TCD_NBYTES_SMLOE
+                | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset)
+                | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
+            _dmaSettings[0].TCD->CITER = half_major_loop_count; // Current major iteration count
+            _dmaSettings[0].TCD->BITER = half_major_loop_count; // Starting major iteration count
+            _dmaSettings[0].replaceSettingsOnCompletion(_dmaSettings[1]);
+
+            _dmaSettings[1].TCD->SADDR = (uint8_t *)sourceAddress + (half_major_loop_count * minorLoopBytes);
+            _dmaSettings[1].TCD->SOFF = sourceAddressOffset;
+            _dmaSettings[1].TCD->SLAST = sourceAddressLastOffset;
+            _dmaSettings[1].TCD->DADDR = destinationAddress;
+            _dmaSettings[1].TCD->DOFF = destinationAddressOffset;
+            _dmaSettings[1].TCD->DLASTSGA = destinationAddressLastOffset;
+            _dmaSettings[1].TCD->ATTR =
+                DMA_TCD_ATTR_SMOD(0U)
+                | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT) // 16bit reads
+                | DMA_TCD_ATTR_DMOD(destinationModulo)
+                | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
+            _dmaSettings[1].TCD->NBYTES_MLOFFYES = 
+                DMA_TCD_NBYTES_SMLOE
+                | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset)
+                | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
+            _dmaSettings[1].TCD->CITER = majorLoopCount - half_major_loop_count; // Current major iteration count
+            _dmaSettings[1].TCD->BITER = majorLoopCount - half_major_loop_count; // Starting major iteration count
+            _dmaSettings[1].disableOnCompletion();
+            _dmaSettings[1].interruptAtCompletion();
+            _dmaSettings[1].replaceSettingsOnCompletion(_dmaSettings[0]);
+
+            flexDma = _dmaSettings[0];
+            flexDma.triggerAtHardwareEvent(hw->shifters_dma_channel[SHIFTER_DMA_REQUEST]);
+            flexDma.clearComplete();
+            #ifdef DEBUG
+            dumpDMA_TCD(&flexDma, "\n*** MulBeatWR_nPrm_DMA ***\n");
+            dumpDMA_TCD(&_dmaSettings[0], "DmaSettings[0]\n");
+            dumpDMA_TCD(&_dmaSettings[1], "DmaSettings[1]\n");
+            #endif
+        }
 
         // Serial.println("Dma setup done");
 
@@ -1698,7 +1756,6 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
         WR_AsyncTransferDone = false;
         flexDma.attachInterrupt(dmaISR);
 
-        dumpDMA_TCD(&flexDma, "NT35510_t4x_p)\n");
 
         flexDma.enable();
         // Serial.println("Starting transfer");
