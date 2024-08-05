@@ -108,7 +108,7 @@ void setup() {
     Serial.println(NT35510X_SPEED_MHZ);
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
-    tft.setBitDepth(16);
+    tft.setBitDepth(24);
 
     tft.displayInfo();
 

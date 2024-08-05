@@ -1548,7 +1548,7 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *
 }
 
 FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t const length) {
-    DBGPrintf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %x, %u\n", cmd, value, length);
+    Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u\n", cmd, value, length, _bitDepth);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
@@ -1560,23 +1560,38 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
     CSLow();
 
     if (length) {
-        for (uint32_t i = 0; i < length - 1U; i++) {
+        if (_bitDepth == 24) {
+            uint8_t r, g, b;
+            for (uint32_t i = 0; i < length - 1U; i++) {
+                buf = *value++;
+                color565toRGB(buf, r, g, b);
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+            }
+        } else {
+
+            for (uint32_t i = 0; i < length - 1U; i++) {
+                buf = *value++;
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
+
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
+            }
             buf = *value++;
+            /* Write the last byte */
             waitWriteShiftStat(__LINE__);
             p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
 
             waitWriteShiftStat(__LINE__);
+            p->TIMSTAT |= _flexio_timer_mask;
+
             p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
         }
-        buf = *value++;
-        /* Write the last byte */
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
-
-        waitWriteShiftStat(__LINE__);
-        p->TIMSTAT |= _flexio_timer_mask;
-
-        p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
 
         /*Wait for transfer to be completed */
         waitTimStat();
@@ -1874,11 +1889,25 @@ void NT35510_t4x_p::beginWrite16BitColors() {
 }
 
 void NT35510_t4x_p::write16BitColor(uint16_t color) {
-    waitWriteShiftStat(__LINE__);
-    p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+    if (_bitDepth == 24) {
+        uint8_t r, g, b;
+        color565toRGB(color, r, g, b);
+        waitWriteShiftStat(__LINE__);
+        p->SHIFTBUF[_write_shifter] = generate_output_word(r);
 
-    waitWriteShiftStat(__LINE__);
-    p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+        waitWriteShiftStat(__LINE__);
+        p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+
+        waitWriteShiftStat(__LINE__);
+        p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+
+    } else {
+        waitWriteShiftStat(__LINE__);
+        p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+
+        waitWriteShiftStat(__LINE__);
+        p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+    }
 }
 
 void NT35510_t4x_p::endWrite16BitColors() {
@@ -1913,12 +1942,25 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
     CSLow();
-    while (length-- > 1) {
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+    if (_bitDepth == 24) {
+        uint8_t r, g, b;
+        color565toRGB(color, r, g, b);
+        while (length-- > 1) {
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+        }
+    } else {
+        while (length-- > 1) {
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+        }
     }
     /* Write the last pixel */
     waitWriteShiftStat(__LINE__);
