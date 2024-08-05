@@ -145,6 +145,13 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     void begin(uint8_t display_name = NT35510, uint8_t baud_speed_mhz = 20);
     uint8_t getBusSpd();
 
+    static uint32_t color888(uint8_t r, uint8_t g, uint8_t b) __attribute__((always_inline)) {
+            return 0xff000000 | (r << 16) | (g << 8) | b;
+    } 
+    static void color888toRGB(uint32_t color, uint8_t &r, uint8_t &g, uint8_t &b)  __attribute__((always_inline)) {
+        r = color >> 16; g = color >> 8; b = color; 
+    }
+
     // If used this must be called before begin
     // Set the FlexIO pins.  The first version you can specify just the wr, and read and optionsl first Data.
     // it will use information in the Flexio library to fill in d1-d7

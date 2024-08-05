@@ -1980,7 +1980,7 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
 bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint32_t *pixels) {
     uint32_t length = w * h;
     // bail if nothing to do
-    if (length == 0) return;
+    if (length == 0) return false;
     setAddr(x, y, x + w - 1, y + h -1);
     Serial.printf("writeRect24BPP(%d, %d, %d, %d, %p): %u\n", x, y, w, h, pixels, length, _bitDepth);
 
@@ -2002,15 +2002,15 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
         }
     } else {
         while (length-- > 0) {
-            uint32_t color = *pixels++;
-            uint16_t color565 = CL(color >> 16, color >> 8, color);
+            uint32_t pixel = *pixels++;
+            uint16_t color = color565(pixel >> 16, pixel >> 8, pixel);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color565 >> 8);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(pixel >> 8);
 
             waitWriteShiftStat(__LINE__);
             //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color565 & 0xFF);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(pixel & 0xFF);
         }
     }
     CSHigh();
