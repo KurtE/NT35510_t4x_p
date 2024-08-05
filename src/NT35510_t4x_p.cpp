@@ -1548,7 +1548,7 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *
 }
 
 FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t const length) {
-    Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u\n", cmd, value, length, _bitDepth);
+    //Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u\n", cmd, value, length, _bitDepth);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
@@ -1562,7 +1562,7 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
     if (length) {
         if (_bitDepth == 24) {
             uint8_t r, g, b;
-            for (uint32_t i = 0; i < length - 1U; i++) {
+            for (uint32_t i = 0; i < length/* - 1U*/; i++) {
                 buf = *value++;
                 color565toRGB(buf, r, g, b);
                 waitWriteShiftStat(__LINE__);
@@ -1945,7 +1945,7 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     if (_bitDepth == 24) {
         uint8_t r, g, b;
         color565toRGB(color, r, g, b);
-        while (length-- > 1) {
+        while (length-- > 0) {
             waitWriteShiftStat(__LINE__);
             p->SHIFTBUF[_write_shifter] = generate_output_word(r);
             waitWriteShiftStat(__LINE__);
@@ -1976,6 +1976,52 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     waitTimStat(__LINE__);
     microSecondDelay();
 }
+
+bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint32_t *pixels) {
+    uint32_t length = w * h;
+    // bail if nothing to do
+    if (length == 0) return;
+    setAddr(x, y, x + w - 1, y + h -1);
+    Serial.printf("writeRect24BPP(%d, %d, %d, %d, %p): %u\n", x, y, w, h, pixels, length, _bitDepth);
+
+    FlexIO_Config_SnglBeat();
+    /* Assert CS, RS pins */
+    output_command_helper(NT35510_RAMWR);
+    microSecondDelay();
+    CSLow();
+    if (_bitDepth == 24) {
+        while (length-- > 0) {
+            uint32_t color = *pixels++;
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+            waitWriteShiftStat(__LINE__);
+            //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color);
+        }
+    } else {
+        while (length-- > 0) {
+            uint32_t color = *pixels++;
+            uint16_t color565 = CL(color >> 16, color >> 8, color);
+
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color565 >> 8);
+
+            waitWriteShiftStat(__LINE__);
+            //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color565 & 0xFF);
+        }
+    }
+    CSHigh();
+    /* Write the last pixel */
+    /*Wait for transfer to be completed */
+    waitTimStat(__LINE__);
+    microSecondDelay();
+    Serial.println("\twriteRect24BPP - exit\n");
+    return true;
+}
+
 
 void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors) {
     DBGPrintf("readRectFlexIO(%d, %d, %d, %d, %p)\n", x, y, w, h, pcolors);

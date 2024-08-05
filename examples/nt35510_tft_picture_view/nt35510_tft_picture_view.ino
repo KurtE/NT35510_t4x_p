@@ -42,6 +42,8 @@
 // optional PNG support requires external library
 #include <PNGdec.h>
 
+#define JPEG_PIXEL_FORMAT_RGB8888
+
 
 #include <Teensy_Parallel_GFX.h>
 
@@ -125,6 +127,7 @@ XPT2046_Touchscreen ts(TOUCH_CS, TOUCH_TIRQ);
 int g_tft_width = 0;
 int g_tft_height = 0;
 uint16_t *tft_frame_buffer = nullptr;
+uint32_t *jpeg_rgb8888_buffer = nullptr;
 bool g_use_efb = true;
 
 File rootFile;
@@ -132,7 +135,7 @@ File myfile;
 
 bool g_fast_mode = false;
 bool g_picture_loaded = false;
-
+bool g_last_picture_jpeg24 = false;
 elapsedMillis emDisplayed;
 #define DISPLAY_IMAGES_TIME 2500
 
@@ -210,8 +213,7 @@ void setup(void) {
 
     Serial.println("*** start up NT35510 ***");
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
-
-    tft.setBitDepth(16);
+    tft.setBitDepth(24);
     tft.setRotation(1);
 
     tft.fillScreen(RED);
@@ -227,15 +229,24 @@ void setup(void) {
     Serial.print("DEVBRD4 - ");
     sdram_begin(32, 166, 1);
     tft_frame_buffer = (uint16_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    #ifdef JPEG_PIXEL_FORMAT_RGB8888
+    jpeg_rgb8888_buffer = (uint32_t *)sdram_malloc(tft.width() * tft.height() * 4 + 32);
+    #endif
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
     sdram_begin(32, 166, 1);
     Serial.print("DEVBRD5 - ");
     tft_frame_buffer = (uint16_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    #ifdef JPEG_PIXEL_FORMAT_RGB8888
+    jpeg_rgb8888_buffer = (uint32_t *)sdram_malloc(tft.width() * tft.height() * 4 + 32);
+    #endif
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
     Serial.print("Teensy4.1 - ");
     tft_frame_buffer = (uint16_t *)extmem_malloc(tft.width() * tft.height() * 2 + 32);
+    #ifdef JPEG_PIXEL_FORMAT_RGB8888
+    jpeg_rgb8888_buffer = (extmem_malloc *)sdram_malloc(tft.width() * tft.height() * 4 + 32);
+    #endif
 #endif
     if (tft_frame_buffer) tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) &
                                    ~((uintptr_t)(31))));
@@ -296,7 +307,6 @@ void setup(void) {
     }
     ShowAllOptionValues();
 
-    tft.useFrameBuffer(true);
 }
 
 //****************************************************************************
@@ -358,16 +368,19 @@ void loop() {
             strncpy(file_name, name, sizeof(file_name));
             g_WRCount = 0;
             if (bmp_file) {
+                tft.useFrameBuffer(true);
                 bmpDraw(imageFile, imageFile.name(), true);
 
 #ifdef __JPEGDEC__
             } else if (jpg_file) {
+                tft.useFrameBuffer(jpeg_rgb8888_buffer ? false : true);
                 processJPGFile(name, true);
                 imageFile.close();
 #endif
 
 #ifdef __PNGDEC__
             } else if (png_file) {
+                tft.useFrameBuffer(true);
                 processPNGFile(name, true);
                 imageFile.close();
 #endif
@@ -388,8 +401,13 @@ void loop() {
     //---------------------------------------------------------------------------
     if (g_fast_mode || g_stepMode || (emDisplayed >= (uint32_t)g_display_image_time)) {
         if (g_picture_loaded) {
-            tft.updateScreen();
+            if (g_last_picture_jpeg24) {
+                tft.writeRect24BPP(0, 0, tft.width(), tft.height(), jpeg_rgb8888_buffer);
+            }
+            else tft.updateScreen();
         }
+        g_last_picture_jpeg24 = false;
+
         //---------------------------------------------------------------------------
         // Process any keyboard input.
         //---------------------------------------------------------------------------
@@ -918,6 +936,14 @@ void processJPGFile(const char *name, bool fErase) {
         int image_width = jpeg.getWidth();
         int image_height = jpeg.getHeight();
         int decode_options = 0;
+        #ifdef JPEG_PIXEL_FORMAT_RGB8888
+        if (jpeg_rgb8888_buffer) {
+            jpeg.setPixelType(RGB8888);
+        }
+        
+        g_last_picture_jpeg24 = true;
+
+        #endif
         Serial.printf("Image size: %dx%d", image_width, image_height);
         switch (g_JPGScale) {
             case 1:
@@ -954,7 +980,18 @@ void processJPGFile(const char *name, bool fErase) {
                 }
         }
         if (fErase && ((image_width / scale < g_tft_width) || (image_height / scale < g_tft_height))) {
-            FillScreen((uint16_t)g_background_color);
+            if (jpeg_rgb8888_buffer) {
+                uint8_t r, g, b;
+                tft.color565toRGB(g_background_color, r, g, b);
+                if (r) r |= 0x7;
+                if (g) g |= 0x3;
+                if (b) b |= 0x7;  
+                uint32_t rgb32 = 0xff000000 | (r << 16) | (g << 8) | (b << 0);
+                for(int i = 0; i < (tft.width() * tft.height()); i++) jpeg_rgb8888_buffer[i] = rgb32;
+
+            } else {
+                FillScreen((uint16_t)g_background_color);
+            }
         }
 
         if (g_center_image) {
@@ -967,7 +1004,7 @@ void processJPGFile(const char *name, bool fErase) {
         g_image_scale = scale;
         Serial.printf("Scale: 1/%d Image Offsets (%d, %d)\n", g_image_scale, g_image_offset_x, g_image_offset_y);
 
-        jpeg.decode(0, 0, decode_options);
+        jpeg.decode(g_image_offset_x, g_image_offset_y, decode_options);
         jpeg.close();
     } else {
         Serial.println("Was not a valid jpeg file");
@@ -987,8 +1024,23 @@ int32_t mySeekJPG(JPEGFILE *handle, int32_t position) {
 int JPEGDraw(JPEGDRAW *pDraw) {
     if (g_debug_output) Serial.printf("jpeg draw: x,y=%d,%d, cx,cy = %d,%d\n",
                                       pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight);
+    if (jpeg_rgb8888_buffer) { 
+        // will copy in the image into our big external buffer.
+        uint32_t *pPixels32 = (uint32_t*) pDraw->pPixels;
+        for (uint16_t y = pDraw->y; y < (pDraw->y + pDraw->iHeight); y++ ) {
+            if (y >= tft.height()) break;
+            if (y < 0) pPixels32 += pDraw->iWidth;
+            else {
+                for (uint16_t x = pDraw->x; x < (pDraw->x + pDraw->iWidth); x++) {
+                    if ((x > 0) && (x < tft.width())) jpeg_rgb8888_buffer[y * tft.width() + x] = *pPixels32;
+                    pPixels32++;
+                }
+            }
+        }
 
-    writeClippedRect(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, pDraw->pPixels);
+    } else {
+        writeClippedRect(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, pDraw->pPixels);
+    }
     return 1;
 }
 #endif

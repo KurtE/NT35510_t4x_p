@@ -188,6 +188,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     // void pushPixels24bitTearing(uint16_t * pcolors, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2 );
     void DMAerror();
 
+    bool writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint32_t *pixels);
+
     /**************************************************************/
     void setScroll(uint16_t offset);
 

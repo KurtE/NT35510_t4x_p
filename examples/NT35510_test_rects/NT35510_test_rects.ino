@@ -153,17 +153,17 @@ void drawTestScreen(uint8_t rot) {
         int x = i * band_width + 1;
 
         tft.drawRect(x, 1, band_width - 2, band_height - 2, colors[i]);
-        WaitForUserInput();
+        //WaitForUserInput();
         tft.fillRect(x, band_height + 1, band_width - 2, band_height - 2, colors[(i + 1) & 7]);
-        WaitForUserInput();
+        //WaitForUserInput();
         for (uint32_t j = 0; j < 12000; j++) pixel_buffer[j] = colors[(i + 2) & 7];
         tft.writeRect(x, 2 * band_height + 1, band_width - 2, band_height - 2, pixel_buffer);
 
-        WaitForUserInput();
+        //WaitForUserInput();
         tft.fillRectVGradient(x, 3 * band_height + 1, band_width - 2, band_height - 2,
                               colors[(i + 3) & 7], colors[(i + 4) & 7]);
 
-        WaitForUserInput();
+        //WaitForUserInput();
     }
     tft.drawLine(0, 0, tft.width()-1, tft.height()-1, NT35510_OLIVE);
     tft.drawLine(0, tft.height()-1, tft.width()-1, 0, NT35510_ORANGE);
