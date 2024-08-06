@@ -44,9 +44,6 @@
 // optional PNG support requires external library
 #include <PNGdec.h>
 
-#define USE_PIXEL_FORMAT_RGB888
-
-
 #include <Teensy_Parallel_GFX.h>
 
 #include "NT35510_t4x_p.h"
@@ -364,19 +361,19 @@ void loop() {
             strncpy(file_name, name, sizeof(file_name));
             g_WRCount = 0;
             if (bmp_file) {
-                tft.useFrameBuffer(frame_buffer_RGB888 ? false : true);
+                //tft.useFrameBuffer(frame_buffer_RGB888 ? false : true);
                 bmpDraw24(imageFile, imageFile.name(), true);
 
 #ifdef __JPEGDEC__
             } else if (jpg_file) {
-                tft.useFrameBuffer(frame_buffer_RGB888 ? false : true);
+                //tft.useFrameBuffer(frame_buffer_RGB888 ? false : true);
                 processJPGFile(name, true);
                 imageFile.close();
 #endif
 
 #ifdef __PNGDEC__
             } else if (png_file) {
-                tft.useFrameBuffer(true);
+                //tft.useFrameBuffer(true);
                 processPNGFile(name, true);
                 imageFile.close();
 #endif
@@ -443,14 +440,14 @@ void loop() {
 //****************************************************************************
 // forward function definitions.
 //****************************************************************************
-void writeClippedRect24(int16_t x, int16_t y, int16_t cx, int16_t cy, uint32_t *pixels, bool waitForWRC = true) {
+void writeClippedRect24(int16_t x, int16_t y, int16_t cx, int16_t cy, uint32_t *pixels) {
     if (frame_buffer_RGB888) {
         y += g_image_offset_y;
         x += g_image_offset_x;
         for (int16_t iy = y; iy < (y + cy); iy++) {
             if (iy  > tft.height()) break;
             if (iy < 0) pixels += cx;
-            uint32_t *pfb_row = &frame_buffer_RGB888[y * tft.width()];
+            uint32_t *pfb_row = &frame_buffer_RGB888[iy * tft.width()];
             for (int16_t ix = x; ix < (x + cx); ix++) {
                 if ((ix >= 0) && (ix < tft.width())) pfb_row[ix] = *pixels;
                 pixels++;
@@ -990,14 +987,10 @@ void processJPGFile(const char *name, bool fErase) {
         int image_width = jpeg.getWidth();
         int image_height = jpeg.getHeight();
         int decode_options = 0;
-        #ifdef USE_PIXEL_FORMAT_RGB888
-        if (frame_buffer_RGB888) {
-            jpeg.setPixelType(RGB8888);
-        }
-        
+
+        jpeg.setPixelType(RGB8888);
         g_last_picture_rgb888 = true;
 
-        #endif
         Serial.printf("Image size: %dx%d", image_width, image_height);
         switch (g_JPGScale) {
             case 1:
@@ -1047,7 +1040,7 @@ void processJPGFile(const char *name, bool fErase) {
         g_image_scale = scale;
         Serial.printf("Scale: 1/%d Image Offsets (%d, %d)\n", g_image_scale, g_image_offset_x, g_image_offset_y);
 
-        jpeg.decode(g_image_offset_x, g_image_offset_y, decode_options);
+        jpeg.decode(0, 0, decode_options);
         jpeg.close();
     } else {
         Serial.println("Was not a valid jpeg file");
@@ -1067,23 +1060,7 @@ int32_t mySeekJPG(JPEGFILE *handle, int32_t position) {
 int JPEGDraw(JPEGDRAW *pDraw) {
     if (g_debug_output) Serial.printf("jpeg draw: x,y=%d,%d, cx,cy = %d,%d\n",
                                       pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight);
-    if (frame_buffer_RGB888) { 
-        // will copy in the image into our big external buffer.
-        uint32_t *pPixels32 = (uint32_t*) pDraw->pPixels;
-        for (uint16_t y = pDraw->y; y < (pDraw->y + pDraw->iHeight); y++ ) {
-            if (y >= tft.height()) break;
-            if (y < 0) pPixels32 += pDraw->iWidth;
-            else {
-                for (uint16_t x = pDraw->x; x < (pDraw->x + pDraw->iWidth); x++) {
-                    if ((x > 0) && (x < tft.width())) frame_buffer_RGB888[y * tft.width() + x] = *pPixels32;
-                    pPixels32++;
-                }
-            }
-        }
-
-    } else {
-        tft.writeRect(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, pDraw->pPixels);
-    }
+    writeClippedRect24(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, (const uint32_t *)pDraw->pPixels);
     return 1;
 }
 #endif
