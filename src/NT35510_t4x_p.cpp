@@ -2006,11 +2006,11 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
             uint16_t color = color565(pixel >> 16, pixel >> 8, pixel);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(pixel >> 8);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
             waitWriteShiftStat(__LINE__);
             //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] = generate_output_word(pixel & 0xFF);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
         }
     }
     CSHigh();

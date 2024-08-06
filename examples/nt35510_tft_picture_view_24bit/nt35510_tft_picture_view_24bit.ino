@@ -1060,7 +1060,7 @@ int32_t mySeekJPG(JPEGFILE *handle, int32_t position) {
 int JPEGDraw(JPEGDRAW *pDraw) {
     if (g_debug_output) Serial.printf("jpeg draw: x,y=%d,%d, cx,cy = %d,%d\n",
                                       pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight);
-    writeClippedRect24(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, (const uint32_t *)pDraw->pPixels);
+    writeClippedRect24(pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, (uint32_t *)pDraw->pPixels);
     return 1;
 }
 #endif
