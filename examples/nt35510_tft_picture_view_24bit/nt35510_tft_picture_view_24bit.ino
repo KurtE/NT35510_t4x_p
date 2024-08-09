@@ -164,6 +164,7 @@ int g_image_width;
 int g_image_height;
 int g_image_offset_x = 0;
 int g_image_offset_y = 0;
+int g_image_Bpp = 0;  //
 uint8_t g_image_scale = 1;
 uint8_t g_image_scale_up = 0;
 uint32_t g_WRCount = 0;  // debug count how many time writeRect called
@@ -195,20 +196,20 @@ void setup(void) {
 
     while (!Serial && millis() < 3000)
         ;
-    // give chance to debug some display startups...
+        // give chance to debug some display startups...
 
-    //-----------------------------------------------------------------------------
-    // initialize display
-    //-----------------------------------------------------------------------------
+        //-----------------------------------------------------------------------------
+        // initialize display
+        //-----------------------------------------------------------------------------
 
-    #ifdef TOUCH_CS
+#ifdef TOUCH_CS
     pinMode(TOUCH_CS, OUTPUT);
     digitalWriteFast(TOUCH_CS, HIGH);
     pinMode(TFT_CS, OUTPUT);
     digitalWriteFast(TFT_CS, HIGH);
     Serial.printf("\n\n*** start up touch cs:%u irq:%u ***\n", TOUCH_CS, TOUCH_TIRQ);
     ts.begin();
-    #endif
+#endif
 
     Serial.println("*** start up NT35510 ***");
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
@@ -241,8 +242,7 @@ void setup(void) {
     tft_frame_buffer = (uint16_t *)extmem_malloc(tft.width() * tft.height() * 2 + 32);
     frame_buffer_RGB888 = (uint32_t *)extmem_malloc(tft.width() * tft.height() * 4 + 32);
 #endif
-    if (tft_frame_buffer) tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) &
-                                   ~((uintptr_t)(31))));
+    if (tft_frame_buffer) tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))));
 
 
     FillScreen(BLUE);
@@ -299,7 +299,6 @@ void setup(void) {
         optionsFile.close();
     }
     ShowAllOptionValues();
-
 }
 
 //****************************************************************************
@@ -396,8 +395,7 @@ void loop() {
         if (g_picture_loaded) {
             if (g_last_picture_rgb888) {
                 tft.writeRect24BPP(0, 0, tft.width(), tft.height(), frame_buffer_RGB888);
-            }
-            else tft.updateScreen();
+            } else tft.updateScreen();
         }
         g_last_picture_rgb888 = false;
 
@@ -445,7 +443,7 @@ void writeClippedRect24(int16_t x, int16_t y, int16_t cx, int16_t cy, uint32_t *
         y += g_image_offset_y;
         x += g_image_offset_x;
         for (int16_t iy = y; iy < (y + cy); iy++) {
-            if (iy  > tft.height()) break;
+            if (iy > tft.height()) break;
             if (iy < 0) pixels += cx;
             uint32_t *pfb_row = &frame_buffer_RGB888[iy * tft.width()];
             for (int16_t ix = x; ix < (x + cx); ix++) {
@@ -453,8 +451,7 @@ void writeClippedRect24(int16_t x, int16_t y, int16_t cx, int16_t cy, uint32_t *
                 pixels++;
             }
         }
-    }
-    else tft.writeRect24BPP(x + g_image_offset_x, y + g_image_offset_y, cx, cy, pixels);
+    } else tft.writeRect24BPP(x + g_image_offset_x, y + g_image_offset_y, cx, cy, pixels);
 }
 
 
@@ -600,9 +597,9 @@ inline void FillScreenOrFB(uint16_t color) {
         tft.color565toRGB(color, r, g, b);
         if (r) r |= 0x7;
         if (g) g |= 0x3;
-        if (b) b |= 0x7;  
+        if (b) b |= 0x7;
         uint32_t rgb32 = 0xff000000 | (r << 16) | (g << 8) | (b << 0);
-        for(int i = 0; i < (tft.width() * tft.height()); i++) frame_buffer_RGB888[i] = rgb32;
+        for (int i = 0; i < (tft.width() * tft.height()); i++) frame_buffer_RGB888[i] = rgb32;
 
     } else {
         FillScreen((uint16_t)color);
@@ -643,7 +640,7 @@ void bmpDraw24(File &bmpFile, const char *filename, bool fErase) {
     Serial.print(F("Loading image '"));
     Serial.print(filename);
     Serial.println('\'');
-    
+
     g_last_picture_rgb888 = frame_buffer_RGB888 != nullptr;
     // Parse BMP header
     if (read16(bmpFile) == 0x4D42) {                                     // BMP signature
@@ -991,7 +988,7 @@ void processJPGFile(const char *name, bool fErase) {
         jpeg.setPixelType(RGB8888);
         g_last_picture_rgb888 = true;
 
-        Serial.printf("Image size: %dx%d", image_width, image_height);
+        Serial.printf("Image size: %dx%d BPP:%d ", image_width, image_height, jpeg.getBpp());
         switch (g_JPGScale) {
             case 1:
                 scale = 1;
@@ -1081,12 +1078,14 @@ void processPNGFile(const char *name, bool fErase) {
     Serial.println('\'');
     rc = png.open((const char *)name, myOpen, myClose, myReadPNG, mySeekPNG, PNGDraw);
     if (rc == PNG_SUCCESS) {
+        g_last_picture_rgb888 = true;
         g_image_width = png.getWidth();
         g_image_height = png.getHeight();
+        g_image_Bpp = png.getBpp();
         g_image_scale_up = 0;
 
         g_image_scale = 1;  // default...
-        Serial.printf("image specs: (%d x %d), %d bpp, pixel type: %d\n", g_image_width, g_image_height, png.getBpp(), png.getPixelType());
+        Serial.printf("image specs: (%d x %d), pixel type: %d Bpp: %d\n", g_image_width, g_image_height, png.getPixelType(), g_image_Bpp);
         if (g_PNGScale > 0) {
             g_image_scale = g_PNGScale;  // use what they passed in
         } else if (g_PNGScale < 0) {
@@ -1120,9 +1119,22 @@ void processPNGFile(const char *name, bool fErase) {
         }
 
         Serial.printf("Scale: 1/%d Image Offsets (%d, %d)\n", g_image_scale, g_image_offset_x, g_image_offset_y);
-        uint16_t *usPixels = (uint16_t *)malloc(g_image_width * ((g_image_scale == 1) ? 16 : g_image_scale) * sizeof(uint16_t));
+        uint32_t *usPixels = (uint32_t *)malloc(g_image_width * ((g_image_scale == 1) ? 16 : g_image_scale) * sizeof(uint32_t));
         if (usPixels) {
             rc = png.decode(usPixels, 0);
+
+            if (rc != PNG_SUCCESS) {
+                Serial.printf("Ping Decode returned error: %u ", rc);
+                switch (rc) {
+                    case PNG_INVALID_PARAMETER: Serial.println("PNG_INVALID_PARAMETER");
+                    case PNG_DECODE_ERROR: Serial.println("PNG_DECODE_ERROR");
+                    case PNG_MEM_ERROR: Serial.println("PNG_MEM_ERROR");
+                    case PNG_NO_BUFFER: Serial.println("PNG_NO_BUFFER");
+                    case PNG_UNSUPPORTED_FEATURE: Serial.println("PNG_UNSUPPORTED_FEATURE");
+                    case PNG_INVALID_FILE: Serial.println("PNG_INVALID_FILE");
+                    case PNG_TOO_BIG: Serial.println("PNG_TOO_BIG");
+                }
+            }
             png.close();
             free(usPixels);
         } else
@@ -1141,23 +1153,198 @@ int32_t mySeekPNG(PNGFILE *handle, int32_t position) {
     return myfile.seek(position);
 }
 
+//
+// Was PNGRGB8888 from PNG file.
+
+inline uint32_t color888(uint8_t r, uint8_t g, uint8_t b) {
+    return 0xff000000 | (r << 16) | (g << 8) | b;
+}
+
+inline uint32_t color565To888(uint16_t color) {
+    uint8_t r, g, b;
+    tft.color565toRGB(color, r, g, b);
+    if (r) r |= 0x7;
+    if (g) g |= 0x3;
+    if (b) b |= 0x7;
+    return 0xff000000 | (r << 16) | (g << 8) | b;
+}
+
+
+void PNGRGB8888(PNGDRAW *pDraw, uint32_t *pPixels, int iHasAlpha) {
+    int x, j;
+    uint32_t usPixel, *pDest = pPixels;
+    uint8_t c = 0, a, *pPal, *s = pDraw->pPixels;
+
+    switch (pDraw->iPixelType) {
+        case PNG_PIXEL_GRAY_ALPHA:
+            for (x = 0; x < pDraw->iWidth; x++) {
+                c = *s++;  // gray level
+                a = *s++;
+                j = (a * c) >> 8;  // multiply by the alpha
+                usPixel = color888(j, j, j);
+                *pDest++ = usPixel;
+            }
+            break;
+        case PNG_PIXEL_GRAYSCALE:
+            switch (pDraw->iBpp) {
+                case 8:
+                    for (x = 0; x < pDraw->iWidth; x++) {
+                        c = *s++;
+                        usPixel = color888(c, c, c);
+                        *pDest++ = usPixel;
+                    }
+                    break;
+                case 1:
+                    for (x = 0; x < pDraw->iWidth; x++) {
+                        if ((x & 7) == 0) {
+                            c = *s++;
+                        }
+                        if (c & 0x80) {
+                            usPixel = 0xffffffff;
+                        } else {
+                            usPixel = 0;
+                        }
+                        *pDest++ = usPixel;
+                        c <<= 1;
+                    }
+                    break;
+            }  // switch on bpp
+            break;
+        case PNG_PIXEL_TRUECOLOR:
+            for (x = 0; x < pDraw->iWidth; x++) {
+                usPixel = color888(s[0], s[1], s[2]);
+                *pDest++ = usPixel;
+                s += 3;
+            }
+            break;
+        case PNG_PIXEL_INDEXED:                              // palette color (can be 1/2/4 or 8 bits per pixel)
+            if (pDraw->pFastPalette && !pDraw->iHasAlpha) {  // faster RGB565 palette exists
+                switch (pDraw->iBpp) {
+                    case 8:
+                        for (x = 0; x < pDraw->iWidth; x++) {
+                            c = *s++;
+                            usPixel = color565To888(pDraw->pFastPalette[c]);
+                            *pDest++ = usPixel;
+                        }
+                        break;
+                    case 4:
+                        for (x = 0; x < pDraw->iWidth; x += 2) {
+                            c = *s++;
+                            usPixel = color565To888(pDraw->pFastPalette[c >> 4]);
+                            *pDest++ = usPixel;
+                            usPixel = color565To888(pDraw->pFastPalette[c & 0xf]);
+                            *pDest++ = usPixel;
+                        }
+                        break;
+                    case 2:
+                        for (x = 0; x < pDraw->iWidth; x += 4) {
+                            c = *s++;
+                            for (j = 0; j < 4; j++) {  // work on pairs of bits
+                                usPixel = color565To888(pDraw->pFastPalette[c >> 6]);
+                                *pDest++ = usPixel;
+                                c <<= 2;
+                            }
+                        }
+                        break;
+                    case 1:
+                        for (x = 0; x < pDraw->iWidth; x++) {
+                            if ((x & 7) == 0) {
+                                c = *s++;
+                            }
+                            usPixel = color565To888(pDraw->pFastPalette[c >> 7]);
+                            *pDest++ = usPixel;
+                            c <<= 1;
+                        }
+                        break;
+                }  // switch on bpp
+                return;
+            }
+            switch (pDraw->iBpp) {
+                case 8:                      // 8-bit palette also supports palette alpha
+                    if (pDraw->iHasAlpha) {  // use the alpha to modify the palette
+                        for (x = 0; x < pDraw->iWidth; x++) {
+                            int a;
+                            c = *s++;
+                            a = pDraw->pPalette[768 + c];  // get alpha
+                            pPal = &pDraw->pPalette[c * 3];
+                            usPixel = color888(pPal[0], pPal[1], pPal[2]);
+                            *pDest++ = usPixel;
+                        }  // for x
+                    } else {
+                        for (x = 0; x < pDraw->iWidth; x++) {
+                            c = *s++;
+                            pPal = &pDraw->pPalette[c * 3];
+                            usPixel = color888(pPal[0], pPal[1], pPal[2]);
+                            *pDest++ = usPixel;
+                        }  // for x
+                    }      // not alpha palette
+                    break;
+                case 4:
+                    for (x = 0; x < pDraw->iWidth; x += 2) {
+                        c = *s++;
+                        pPal = &pDraw->pPalette[(c >> 4) * 3];
+                        usPixel = color888(pPal[0], pPal[1], pPal[2]);
+                        *pDest++ = usPixel;
+                        pPal = &pDraw->pPalette[(c & 0xf) * 3];
+                        usPixel = color888(pPal[0], pPal[1], pPal[2]);
+                        *pDest++ = usPixel;
+                    }
+                    break;
+                case 2:
+                    for (x = 0; x < pDraw->iWidth; x += 4) {
+                        c = *s++;
+                        for (j = 0; j < 4; j++) {  // work on pairs of bits
+                            pPal = &pDraw->pPalette[(c >> 6) * 3];
+                            usPixel = color888(pPal[0], pPal[1], pPal[2]);
+                            *pDest++ = usPixel;
+                            c <<= 2;
+                        }
+                    }
+                    break;
+                case 1:
+                    for (x = 0; x < pDraw->iWidth; x++) {
+                        if ((x & 7) == 0) {
+                            c = *s++;
+                        }
+                        pPal = &pDraw->pPalette[(c >> 7) * 3];
+                        usPixel = color888(pPal[0], pPal[1], pPal[2]);
+                        *pDest++ = usPixel;
+                        c <<= 1;
+                    }
+                    break;
+            }  // switch on bits per pixel
+            break;
+        case PNG_PIXEL_TRUECOLOR_ALPHA:  // truecolor + alpha
+            for (x = 0; x < pDraw->iWidth; x++) {
+                usPixel = color888(s[0], s[1], s[2]);
+                *pDest++ = usPixel;
+                s += 4;  // skip alpha
+            }
+            break;
+    }
+}
+
+
 // Function to draw pixels to the display
 void PNGDraw(PNGDRAW *pDraw) {
-    uint16_t *usPixels = (uint16_t *)pDraw->pUser;
+    //Serial.print(".");
+    uint32_t *usPixels = (uint32_t *)pDraw->pUser;
     if (g_image_scale == 1) {
-        uint16_t *pusRow = usPixels + pDraw->iWidth * (pDraw->y & 0xf);  // we have 16 lines to work with
-        png.getLineAsRGB565(pDraw, pusRow, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
+        uint32_t *pusRow = usPixels + pDraw->iWidth * (pDraw->y & 0xf);  // we have 16 lines to work with
+        
+        PNGRGB8888(pDraw, pusRow, false);
         // but we will output 8 lines at time.
         if ((pDraw->y == g_image_height - 1) || ((pDraw->y & 0x7) == 0x7)) {
             //      WaitforWRComplete(); // make sure previous writes are done
-            tft.writeRect(0, pDraw->y & 0xfff8, pDraw->iWidth, (pDraw->y & 0x7) + 1,
-                             usPixels + (pDraw->y & 0x8) * pDraw->iWidth);
+            writeClippedRect24(0, pDraw->y & 0xfff8, pDraw->iWidth, (pDraw->y & 0x7) + 1,
+                          usPixels + (pDraw->y & 0x8) * pDraw->iWidth);
         }
     } else {
-        uint16_t *pusRow = usPixels + pDraw->iWidth * (pDraw->y % g_image_scale);
-        png.getLineAsRGB565(pDraw, pusRow, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
-        ScaleDownWriteClippedRect(pDraw->y, pDraw->iWidth, usPixels);
+        uint32_t *pusRow = usPixels + pDraw->iWidth * (pDraw->y % g_image_scale);
+        PNGRGB8888(pDraw, pusRow, false);
+        ScaleDownwriteClippedRect24(pDraw->y, pDraw->iWidth, pusRow);
     }
+    g_WRCount++;
 }
 
 
@@ -1167,7 +1354,7 @@ void PNGDraw(PNGDRAW *pDraw) {
 // Touch screen support
 //=============================================================================
 void ProcessTouchScreen() {
-    #ifdef TOUCH_CS
+#ifdef TOUCH_CS
     // See if there's any  touch data for us
     //  if (ts.bufferEmpty()) {
     //    return;
@@ -1200,9 +1387,9 @@ void ProcessTouchScreen() {
     p.y = map(p.y, TS_MINY, TS_MAXY, 0, g_tft_height);
 #else
 
-        uint16_t px = map(p.y, TS_MAXY, TS_MINY, 0, g_tft_width);
-        p.y = map(p.x, TS_MINX, TS_MAXX, 0, g_tft_height);
-        p.x = px;
+    uint16_t px = map(p.y, TS_MAXY, TS_MINY, 0, g_tft_width);
+    p.y = map(p.x, TS_MINX, TS_MAXX, 0, g_tft_height);
+    p.x = px;
 #endif
     Serial.print(" (");
     Serial.print(p.x);

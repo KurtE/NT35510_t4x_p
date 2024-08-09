@@ -1982,7 +1982,7 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
     // bail if nothing to do
     if (length == 0) return false;
     setAddr(x, y, x + w - 1, y + h -1);
-    Serial.printf("writeRect24BPP(%d, %d, %d, %d, %p): %u\n", x, y, w, h, pixels, length, _bitDepth);
+    //Serial.printf("writeRect24BPP(%d, %d, %d, %d, %p): %u\n", x, y, w, h, pixels, length, _bitDepth);
 
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
@@ -2018,7 +2018,7 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
     /*Wait for transfer to be completed */
     waitTimStat(__LINE__);
     microSecondDelay();
-    Serial.println("\twriteRect24BPP - exit\n");
+    //Serial.println("\twriteRect24BPP - exit\n");
     return true;
 }
 
