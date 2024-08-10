@@ -2,6 +2,7 @@
 #include "NT35510_t4x_p.h"
 //#include <HX8357_t4x_p.h>
 #include "cricket.h"
+#include "I_can_not_hear_you.h"
 
 #ifdef ARDUINO_TEENSY41
 #define TFT_DC 10
@@ -58,8 +59,12 @@ void setup(void) {
     tft.fillScreen(BLUE);
     delay(500);
 
-    tft.writeRect((tft.width() - gimp_image.width) / 2, (tft.height() - gimp_image.height) / 2,
+    tft.writeRect(50, 50,
                   gimp_image.width, gimp_image.height, (uint16_t*)gimp_image.pixel_data);
+
+    delay(1000);
+    tft.writeRect(tft.width() - (gimp_image_hear.width + 50), tft.height() - (gimp_image_hear.height + 50),
+                  gimp_image_hear.width, gimp_image_hear.height, (uint16_t*)gimp_image_hear.pixel_data);
 }
 
 void fillScreenOneColorRange(uint32_t color_start, uint32_t color_end) {
