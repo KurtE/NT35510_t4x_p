@@ -954,7 +954,7 @@ FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uin
         _data_pins[0] = tft_d0;
 
         // lets dos some quick validation of the pins.
-        for (uint8_t i = 1; i < 8; i++) {
+        for (uint8_t i = 1; i < _bus_width; i++) {
             flexio_pin++; // lets look up the what pins come next.
             _data_pins[i] = pFlex->mapFlexPinToIOPin(flexio_pin);
             if (_data_pins[i] == 0xff) {
@@ -967,10 +967,8 @@ FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uin
 #endif
     }
     // set the write and read pins and see if d0 is not 0xff set it and compute the others.
-    if (write_pin != 0xff)
-        _wr_pin = write_pin;
-    if (rd_pin != 0xff)
-        _rd_pin = rd_pin;
+    _wr_pin = write_pin;
+    _rd_pin = rd_pin;
 
     DBGPrintf("FlexIO pins: data: %u %u %u %u %u %u %u %u WR:%u RD:%u\n",
               _data_pins[0], _data_pins[1], _data_pins[2], _data_pins[3], _data_pins[4], _data_pins[5], _data_pins[6], _data_pins[7],
@@ -978,9 +976,10 @@ FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uin
     return true;
 }
 
-// Set the FlexIO pins.  Specify all of the pins for 8 bit mode. Must be called before begin
+// Set the FlexIO NT35510_t4x_p.  Specify all of the pins for 8 bit mode. Must be called before begin
 FLASHMEM bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
-                                           uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7) {
+                                           uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7, uint8_t d8, uint8_t d9, uint8_t d10,
+                                           uint8_t d11, uint8_t d12, uint8_t d13, uint8_t d14, uint8_t d15 ) {
 
     _data_pins[0] = d0;
     _data_pins[1] = d1;
@@ -992,9 +991,18 @@ FLASHMEM bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, ui
     _data_pins[7] = d7;
     _wr_pin = write_pin;
     _rd_pin = rd_pin;
+    _data_pins[8] = d8;
+    _data_pins[9] = d9;
+    _data_pins[10] = d10;
+    _data_pins[11] = d11;
+    _data_pins[12] = d12;
+    _data_pins[13] = d13;
+    _data_pins[14] = d14;
+    _data_pins[15] = d15;
 
-    DBGPrintf("FlexIO pins: data: %u %u %u %u %u %u %u %u WR:%u RD:%u\n",
+    DBGPrintf("FlexIO pins: data: %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u WR:%u RD:%u\n",
               _data_pins[0], _data_pins[1], _data_pins[2], _data_pins[3], _data_pins[4], _data_pins[5], _data_pins[6], _data_pins[7],
+              _data_pins[8], _data_pins[9], _data_pins[10], _data_pins[11], _data_pins[12], _data_pins[13], _data_pins[14], _data_pins[15],
               _wr_pin, _rd_pin);
     // Note this does not verify the pins are valid.
     return true;
@@ -1016,9 +1024,9 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
 
     // lets do some quick validation of the pins.
     // BUGBUG: nibble mode sort of hard coded pin wise..
-    _bus_width = 8;
+    //_bus_width = 8;
     uint8_t previous_flexio_pin = _flexio_D0;
-    for (uint8_t i = 1; i < 8; i++) {
+    for (uint8_t i = 1; i < _bus_width; i++) {
         uint8_t flexio_pin = pFlex->mapIOPinToFlexPin(_data_pins[i]);
         if (flexio_pin != (previous_flexio_pin + 1)) {
             if ((i == 4) && (flexio_pin != 0xff)) {
@@ -1065,22 +1073,22 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     DBGPrintf("FlexIO pin mappings: D0(%u)=%u  WR(%u)=%u RD(%u)=%u\n)", _data_pins[0], _flexio_D0, _wr_pin, _flexio_WR, _rd_pin, _flexio_RD);
 
     // Now l
-    for (uint8_t pin_index = 0; pin_index < 8; pin_index++) {
+    for (uint8_t pin_index = 0; pin_index < _bus_width; pin_index++) {
         pinMode(_data_pins[pin_index], OUTPUT);
     }
 
     /* Basic pin setup */
     pinMode(_wr_pin, OUTPUT); // FlexIO2:0 WR
-    pinMode(_rd_pin, OUTPUT); // FlexIO2:1 RD
+    if (_rd_pin != 0xff)pinMode(_rd_pin, OUTPUT); // FlexIO2:1 RD
 
     digitalWriteFast(_wr_pin, HIGH);
-    digitalWriteFast(_rd_pin, HIGH);
+    if (_rd_pin != 0xff) digitalWriteFast(_rd_pin, HIGH);
 
     /* High speed and drive strength configuration */
     *(portControlRegister(_wr_pin)) = 0xFF;
-    *(portControlRegister(_rd_pin)) = 0xFF;
+    if (_rd_pin != 0xff) *(portControlRegister(_rd_pin)) = 0xFF;
 
-    for (uint8_t pin_index = 0; pin_index < 8; pin_index++) {
+    for (uint8_t pin_index = 0; pin_index < _bus_width; pin_index++) {
         *(portControlRegister(_data_pins[pin_index])) = 0xFF;
     }
 
@@ -1091,19 +1099,19 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     hw->clock_gate_register |= hw->clock_gate_mask;
 
     pFlex->setIOPinToFlexMode(_wr_pin);
-    pFlex->setIOPinToFlexMode(_rd_pin);
+    if (_rd_pin != 0xff)pFlex->setIOPinToFlexMode(_rd_pin);
 
-    for (uint8_t pin_index = 0; pin_index < 8; pin_index++) {
+    for (uint8_t pin_index = 0; pin_index < _bus_width; pin_index++) {
         pFlex->setIOPinToFlexMode(_data_pins[pin_index]);
     }
 
     // Lets print out all of the pins, configurations
-    for (uint8_t pin_index = 0; pin_index < 8; pin_index++) {
+    for (uint8_t pin_index = 0; pin_index < _bus_width; pin_index++) {
         DBGPrintf("Data%u: pin:%u Port:%08x Mux:%08x\n", pin_index, _data_pins[pin_index],
                   *(portControlRegister(_data_pins[pin_index])), *(portConfigRegister(_data_pins[pin_index])));
     }
     DBGPrintf("WR: pin:%u Port:%08x Mux:%08x\n", _wr_pin, *(portControlRegister(_wr_pin)), *(portConfigRegister(_wr_pin)));
-    DBGPrintf("RD: pin:%u Port:%08x Mux:%08x\n", _rd_pin, *(portControlRegister(_rd_pin)), *(portConfigRegister(_rd_pin)));
+    if (_rd_pin != 0xff) DBGPrintf("RD: pin:%u Port:%08x Mux:%08x\n", _rd_pin, *(portControlRegister(_rd_pin)), *(portConfigRegister(_rd_pin)));
 
     /* Enable the FlexIO with fast access */
     p->CTRL = FLEXIO_CTRL_FLEXEN /*| FLEXIO_CTRL_FASTACC */;
@@ -1520,7 +1528,7 @@ FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
     CSHigh();
 }
 
-FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *value = NULL, uint32_t const length = 0) {
+FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *value = NULL, uint32_t length = 0) {
     Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_8(%x, %x, %u\n", cmd, value, length);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
@@ -1547,7 +1555,7 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *
     /* De-assert CS pin */
 }
 
-FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t const length) {
+FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t length) {
     //Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u\n", cmd, value, length, _bitDepth);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
@@ -1561,36 +1569,75 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
 
     if (length) {
         if (_bitDepth == 24) {
-            uint8_t r, g, b;
-            for (uint32_t i = 0; i < length/* - 1U*/; i++) {
-                buf = *value++;
-                color565toRGB(buf, r, g, b);
-                waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(r);
-                waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(g);
-                waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+            if (_bus_width == 16) { 
+                // Little more complex 
+                // it takes 3 writes R1G1 B1R2 G2B2 to output 2 pixels
+                uint8_t r1, g1, b1;
+                uint8_t r2, g2, b2;
+                while (length >= 2) {
+                    length -= 2;
+                    color565toRGB(*value++, r1, g1, b1);
+                    color565toRGB(*value++, r2, g2, b2);
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = (b1 << 8) | r2;
+                    waitWriteShiftStat(__LINE__);
+                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
+                    p->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
+                }
+                if (length) {
+                    color565toRGB(*value++, r1, g1, b1);
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+                    waitWriteShiftStat(__LINE__);
+                    p->TIMSTAT |= _flexio_timer_mask;
+                    p->SHIFTBUF[_write_shifter] = (b1 << 8);  // there is no R2...
+                }
+
+            } else {    
+                uint8_t r, g, b;
+                while(length--) {
+                    buf = *value++;
+                    color565toRGB(buf, r, g, b);
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+                    waitWriteShiftStat(__LINE__);
+                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
+                    p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+                }
             }
         } else {
+            if (_bus_width == 16) {
+                for (uint32_t i = 0; i < length - 1U; i++) {
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = *value++;
+                }
+                waitWriteShiftStat(__LINE__);
+                p->TIMSTAT |= _flexio_timer_mask;
 
-            for (uint32_t i = 0; i < length - 1U; i++) {
+                p->SHIFTBUF[_write_shifter] = *value++;
+            } else {
+                for (uint32_t i = 0; i < length - 1U; i++) {
+                    buf = *value++;
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
+
+                    waitWriteShiftStat(__LINE__);
+                    p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
+                }
                 buf = *value++;
+                /* Write the last byte */
                 waitWriteShiftStat(__LINE__);
                 p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
 
                 waitWriteShiftStat(__LINE__);
+                p->TIMSTAT |= _flexio_timer_mask;
+
                 p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
             }
-            buf = *value++;
-            /* Write the last byte */
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
-
-            waitWriteShiftStat(__LINE__);
-            p->TIMSTAT |= _flexio_timer_mask;
-
-            p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
         }
 
         /*Wait for transfer to be completed */
@@ -1618,7 +1665,7 @@ NT35510_t4x_p *NT35510_t4x_p::dmaCallback = nullptr;
 DMAChannel NT35510_t4x_p::flexDma;
 DMASetting NT35510_t4x_p::_dmaSettings[2];
 
-FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *value, uint32_t const length) {
+FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *value, uint32_t length) {
     DBGPrintf("NT35510_t4x_p::MulBeatWR_nPrm_DMA(%x, %x, %u\n", cmd, value, length);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
@@ -1886,31 +1933,70 @@ void NT35510_t4x_p::beginWrite16BitColors() {
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
     CSLow();
+    _write16BitColor_save_pixel = (uint32_t)-1;
 }
 
 void NT35510_t4x_p::write16BitColor(uint16_t color) {
     if (_bitDepth == 24) {
-        uint8_t r, g, b;
-        color565toRGB(color, r, g, b);
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+        if (_bus_width == 16) {
+            // again more complex as we combine 2 pixels
+            // into 3 writes...
+            if (_write16BitColor_save_pixel == (uint32_t)-1) {
+                _write16BitColor_save_pixel = color; // save it away
+            } else {
+                uint8_t r1, g1, b1;
+                uint8_t r2, g2, b2;
+                color565toRGB(_write16BitColor_save_pixel, r1, g1, b1);
+                color565toRGB(color, r2, g2, b2);
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (b1 << 8) | r2;
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
 
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+                _write16BitColor_save_pixel = (uint32_t)-1;
+            }
 
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+        } else {
+            uint8_t r, g, b;
+            color565toRGB(color, r, g, b);
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(r);
 
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+        }
     } else {
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+        if (_bus_width == 16) {
+            // we simply output the one word
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = color;
+        } else {
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
-        waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+        }
     }
 }
 
 void NT35510_t4x_p::endWrite16BitColors() {
+    // 24 bit color on 16 bit bus is a little more complex...
+    if ((_bitDepth == 24) && (_bus_width == 16) && (_write16BitColor_save_pixel != (uint32_t)-1)) {
+        uint8_t r1, g1, b1;
+        color565toRGB(_write16BitColor_save_pixel, r1, g1, b1);
+        waitWriteShiftStat(__LINE__);
+        p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+        waitWriteShiftStat(__LINE__);
+        p->TIMSTAT |= _flexio_timer_mask;
+        p->SHIFTBUF[_write_shifter] = (b1 << 8);  // there is no R2...
+    }
+    
     /*Wait for transfer to be completed */
     waitTimStat();
     microSecondDelay();
@@ -1945,21 +2031,49 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     if (_bitDepth == 24) {
         uint8_t r, g, b;
         color565toRGB(color, r, g, b);
-        while (length-- > 0) {
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(r);
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(g);
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+
+        if (_bus_width == 16) {
+            while (length >= 2 ) {
+                length -= 2;
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (r << 8) | g;
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (b << 8) | r;
+                waitWriteShiftStat(__LINE__);
+                if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
+                p->SHIFTBUF[_write_shifter] = (g << 8) | b;
+            }
+            if (length) {
+                // only 1 pixel left
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (r << 8) | g;
+                waitWriteShiftStat(__LINE__);
+                p->TIMSTAT |= _flexio_timer_mask;
+                p->SHIFTBUF[_write_shifter] = (b << 8);
+            }
+
+        } else {
+            while (length-- > 0) {
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+                waitWriteShiftStat(__LINE__);
+                if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
+                p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+            }
         }
     } else {
         while (length-- > 1) {
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+            if (_bus_width == 16) {
+                p->SHIFTBUF[_write_shifter] = color; 
+            } else {
+                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+            }
         }
     }
     /* Write the last pixel */
@@ -1990,15 +2104,41 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
     microSecondDelay();
     CSLow();
     if (_bitDepth == 24) {
-        while (length-- > 0) {
-            uint32_t color = *pixels++;
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
-            waitWriteShiftStat(__LINE__);
-            //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color);
+        if (_bus_width == 16) {
+            while (length >= 2 ) {
+                length -= 2;
+                uint32_t color = *pixels++;
+                uint32_t color2 = *pixels++;
+
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color2 >> 16) & 0xff); // B R2
+                waitWriteShiftStat(__LINE__);
+                if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
+                p->SHIFTBUF[_write_shifter] =  color2 & 0xffff; // G2 B2;
+            }
+            if (length) {
+                // only 1 pixel left
+                uint32_t color = *pixels++;
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+                waitWriteShiftStat(__LINE__);
+                p->TIMSTAT |= _flexio_timer_mask;
+                p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8);
+            }
+
+        } else {
+            while (length-- > 0) {
+                uint32_t color = *pixels++;
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
+                waitWriteShiftStat(__LINE__);
+                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+                waitWriteShiftStat(__LINE__);
+                //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
+                p->SHIFTBUF[_write_shifter] = generate_output_word(color);
+            }
         }
     } else {
         while (length-- > 0) {
@@ -2006,11 +2146,15 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
             uint16_t color = color565(pixel >> 16, pixel >> 8, pixel);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+            if (_bus_width == 16) {
+                p->SHIFTBUF[_write_shifter] = color;
+            } else {
+                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
-            waitWriteShiftStat(__LINE__);
-            //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+                waitWriteShiftStat(__LINE__);
+                //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
+                p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+            }
         }
     }
     CSHigh();
@@ -2026,6 +2170,14 @@ void NT35510_t4x_p::fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, ui
     uint32_t length = w * h;
     // bail if nothing to do
     if (length == 0) return ;
+
+    // If we are not 24 bit mode just call of to the 16 bit version with converted color.
+    if (_bitDepth != 24) {
+        uint16_t clr565 = color565(color >> 16, color >> 8, color);
+        fillRectFlexIO(x, y, w, h, clr565);
+        return;
+    }
+
     setAddr(x, y, x + w - 1, y + h -1);
     //Serial.printf("fillRect24BPP(%d, %d, %d, %d, %x): %u\n", x, y, w, h, color, length, _bitDepth);
 
@@ -2034,7 +2186,26 @@ void NT35510_t4x_p::fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, ui
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
     CSLow();
-    if (_bitDepth == 24) {
+    if (_bus_width == 16) {
+        while (length >= 2 ) {
+            length -= 2;
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color >> 16) & 0xff); // B R2
+            waitWriteShiftStat(__LINE__);
+            if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
+            p->SHIFTBUF[_write_shifter] =  color & 0xffff; // G2 B2;
+        }
+        if (length) {
+            // only 1 pixel left
+            waitWriteShiftStat(__LINE__);
+            p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+            waitWriteShiftStat(__LINE__);
+            p->TIMSTAT |= _flexio_timer_mask;
+            p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8);
+        }
+    } else {
         while (length-- > 0) {
             waitWriteShiftStat(__LINE__);
             p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
@@ -2044,18 +2215,8 @@ void NT35510_t4x_p::fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, ui
             //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
             p->SHIFTBUF[_write_shifter] = generate_output_word(color);
         }
-    } else {
-        uint16_t clr565 = color565(color >> 16, color >> 8, color);
-        while (length-- > 0) {
-
-            waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(clr565 >> 8);
-
-            waitWriteShiftStat(__LINE__);
-            //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] = generate_output_word(clr565 & 0xFF);
-        }
     }
+
     CSHigh();
     /* Write the last pixel */
     /*Wait for transfer to be completed */
@@ -2205,7 +2366,7 @@ bool NT35510_t4x_p::writeRectAsyncActiveFlexIO() {
 NT35510_t4x_p * NT35510_t4x_p::IRQcallback = nullptr;
 
 
-FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *value, uint32_t const length) 
+FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *value, uint32_t length) 
 {
     if (length == 0) return; // bail if no data to output
 
@@ -2233,7 +2394,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
     WR_AsyncTransferDone = false;
     uint32_t bytes = length*2U;
 
-    _irq_bytes_per_shifter = (_bus_width <= 8) ? 4 : 2;
+    _irq_bytes_per_shifter = (_bus_width != 10) ? 4 : 2;
     _irq_bytes_per_burst = _irq_bytes_per_shifter * SHIFTNUM;
 
     _irq_bursts_to_complete = bytes / _irq_bytes_per_burst;

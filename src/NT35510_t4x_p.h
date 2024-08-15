@@ -158,8 +158,11 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     bool setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uint8_t tft_d0 = 0xff);
 
     // Set the FlexIO pins.  Specify all of the pins for 8 bit mode. Must be called before begin
-    bool setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
-                       uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7);
+    bool setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, 
+                       uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
+                       uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7,
+                       uint8_t d8=0xff, uint8_t d9=0xff, uint8_t d10=0xff, uint8_t d11=0xff,
+                       uint8_t d12=0xff, uint8_t d13=0xff, uint8_t d14=0xff, uint8_t d15=0xff);
 
     uint8_t setBitDepth(uint8_t bitDepth);
     uint8_t getBitDepth();
@@ -223,7 +226,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
         #if !defined(ARDUINO_TEENSY40)
         return p->SHIFTBUFBYS[_read_shifter];
         #else
-        if (_bus_width == 8) return p->SHIFTBUFBYS[_read_shifter];
+        if (_bus_width != 10) return p->SHIFTBUFBYS[_read_shifter];
         uint16_t data = p->SHIFTBUF[_read_shifter] >> 16; // 10 bits but shifter does 16
         return ((data >> 2) & 0xf0) | (data & 0xf);
         #endif
@@ -326,7 +329,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     int8_t _dc, _cs, _rst;
 
     // The Teensy IO pins used for data and Read and Write
-    uint8_t _data_pins[8], _wr_pin, _rd_pin;
+    uint8_t _data_pins[16], _wr_pin, _rd_pin;
 
     uint8_t _flexio_D0, _flexio_WR, _flexio_RD; // which flexio pins do they map to
     uint8_t _write_shifter = 0;
@@ -339,6 +342,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     uint8_t _dummy;
     uint8_t _curMADCTL;
+    uint32_t _write16BitColor_save_pixel;
 
     volatile bool WR_AsyncTransferDone = true;
     uint32_t MulBeatCountRemain;
@@ -367,13 +371,13 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     void writeRegM(uint16_t cmd, uint8_t len, uint8_t data[]);
     void write_command_and_data(uint32_t cmd, uint8_t val);
     void output_command_helper(uint32_t cmd);
-    void SglBeatWR_nPrm_8(uint32_t const cmd, uint8_t const *value, uint32_t const length);
-    void SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t const length);
+    void SglBeatWR_nPrm_8(uint32_t const cmd, uint8_t const *value, uint32_t length);
+    void SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t length);
     // Works on FlexIO1 and FlexIO2 but not 3 and only on Shifters 0-3
-    void MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *value, uint32_t const length);
+    void MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *value, uint32_t length);
 
     // Works on FlexIO3 and others as well
-    void MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *value, uint32_t const length);
+    void MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *value, uint32_t length);
     static void flexio_ISR();
     void flexIRQ_Callback();
 
