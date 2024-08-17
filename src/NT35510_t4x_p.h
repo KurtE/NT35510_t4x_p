@@ -131,8 +131,8 @@
 
 /****************************************************************************************/
 // #define NT35510_CLOCK_READ 30   //equates to 8mhz
-//#define NT35510_CLOCK_READ 60 // equates to 4mhz
-#define NT35510_CLOCK_READ 120   //equates to 2mhz
+#define NT35510_CLOCK_READ 60 // equates to 4mhz
+//#define NT35510_CLOCK_READ 120   //equates to 2mhz
 
 enum {
     NT35510 = 0
@@ -225,7 +225,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
         #endif
     }
 
-    uint8_t read_shiftbuf_byte() __attribute__((always_inline)) {
+    uint16_t read_shiftbuf_byte() __attribute__((always_inline)) {
         #if !defined(ARDUINO_TEENSY40)
         return p->SHIFTBUFBYS[_read_shifter];
         #else

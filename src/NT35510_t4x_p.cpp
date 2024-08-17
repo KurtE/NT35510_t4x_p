@@ -317,36 +317,18 @@ FLASHMEM void NT35510_t4x_p::onCompleteCB(CBF callback) {
 
 FASTRUN void NT35510_t4x_p::displayInfo() {
     CSLow();
-/*
-    Serial.printf("Manufacturer ID: 0x%02X\n", readCommand(HX8357B_RDID1));
-    Serial.printf("Module Version ID: 0x%02X\n", readCommand(HX8357B_RDID2));
-    Serial.printf("Module ID: 0x%02X\n", readCommand(HX8357B_RDID3));
-    Serial.printf("Display Power Mode: 0x%02X\n", readCommand(NT35510_RDMODE));
-    Serial.printf("MADCTL Mode: 0x%02X\n", readCommand(NT35510_RDMADCTL));
-    //Serial.printf("Pixel Format: 0x%02X\n", readCommand(NT35510_RDCOLMOD));
-    Serial.printf("Image Format: 0x%02X\n", readCommand(NT35510_RDIMGFMT));
-    //Serial.printf("Signal Mode: 0x%02X\n", readCommand(NT35510_RDDSM));
-    uint8_t sdRes = readCommand(NT35510_RDSELFDIAG);
+    Serial.printf("Manufacturer ID: 0x%02X\n", readCommand(NT35510_RDID1));
+    Serial.printf("Module Version ID: 0x%02X\n", readCommand(NT35510_RDID2));
+    Serial.printf("Module ID: 0x%02X\n", readCommand(NT35510_RDID3));
+
+    Serial.printf("Display Power Mode: 0x%02X\n", readCommand(NT35510_RDDPM));
+    Serial.printf("MADCTL Mode: 0x%02X\n", readCommand(NT35510_RDDMADCTL));
+    Serial.printf("Pixel Format: 0x%02X\n", readCommand(NT35510_RDDCOLMOD));
+    Serial.printf("Image Format: 0x%02X\n", readCommand(NT35510_RDDIM));
+    Serial.printf("Signal Mode: 0x%02X\n", readCommand(NT35510_RDDSM));
+    uint8_t sdRes = readCommand(NT35510_RDDSDR);
     Serial.printf("Self Diagnostic: %s (0x%02X)\n", sdRes == 0xc0 ? "OK" : "Failed", sdRes);
     Serial.printf("Device Information: %06X\n", readCommandN(NT35510_RDDID, 3));
-    uint32_t device_status = readCommandN(NT35510_RDDST, 4);
-    Serial.printf("Device Status: %08X\n", device_status);
-    Serial.printf("\tOrder: %s\n", (device_status & (1 << 26)) ? "BGR" : "RGB");
-    Serial.print("\tinterface pixel format: ");
-    switch ((device_status >> 20) & 0x7) {
-    case 0x5:
-        Serial.println("16 bit");
-        break;
-    case 0x6:
-        Serial.println("18 bit");
-        break;
-    case 0x7:
-        Serial.println("24 bit");
-        break;
-    default:
-        Serial.println("????");
-    }
-*/
     CSHigh();
 }
 
@@ -1195,25 +1177,38 @@ FASTRUN uint8_t NT35510_t4x_p::readCommand(uint16_t const cmd) {
     FlexIO_Config_SnglBeat();
     output_command_helper(cmd);
     CSLow();
+    microSecondDelay();
 
 
     FlexIO_Clear_Config_SnglBeat();
     FlexIO_Config_SnglBeat_Read();
 
-    uint8_t dummy __attribute__((unused)) = 0;
-    uint8_t data = 0;
+    uint16_t dummy __attribute__((unused)) = 0;
+    uint16_t data = 0;
+    
+    if (_bus_width == 16) {
+        #if 1
+        waitReadShiftStat(__LINE__);
+        // digitalToggleFast(2);
+        dummy = p->SHIFTBUF[_read_shifter] >> 16;
+        #endif
+        waitReadShiftStat(__LINE__);
+        // digitalToggleFast(2);
+        data = p->SHIFTBUF[_read_shifter] >> 16;
 
-    waitReadShiftStat(__LINE__);
-    // digitalToggleFast(2);
-    dummy = read_shiftbuf_byte();
-
-    waitReadShiftStat(__LINE__);
-    // digitalToggleFast(2);
-    data = read_shiftbuf_byte();
-
+    } else {
+        #if 1
+        waitReadShiftStat(__LINE__);
+        // digitalToggleFast(2);
+        dummy = read_shiftbuf_byte();
+        #endif
+        waitReadShiftStat(__LINE__);
+        // digitalToggleFast(2);
+        data = read_shiftbuf_byte();
+    }
     CSHigh();
     microSecondDelay();
-    // Serial.printf("Dummy 0x%x, data 0x%x\n", dummy, data);
+    //Serial.printf("Dummy 0x%x, data 0x%x\n", dummy, data);
 
     // Set FlexIO back to Write mode
     FlexIO_Config_SnglBeat();
@@ -2157,12 +2152,13 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
 
             waitWriteShiftStat(__LINE__);
             if (_bus_width == 16) {
+                if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
                 p->SHIFTBUF[_write_shifter] = color;
             } else {
                 p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
                 waitWriteShiftStat(__LINE__);
-                //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
+                if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
                 p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
             }
         }

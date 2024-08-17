@@ -30,7 +30,7 @@ extern "C" bool sdram_begin(uint8_t external_sdram_size, uint8_t clock, uint8_t 
 HX8357_t4x_p tft = HX8357_t4x_p(TFT_DC, TFT_CS, TFT_RST);  //(dc, cs, rst)
 #else
 #define DISPLAY_TYPE NT35510
-#define DISPLAY_SPEED_MHZ 20
+#define DISPLAY_SPEED_MHZ 30
 #define DISPLAY_ROTATION 1
 NT35510_t4x_p tft = NT35510_t4x_p(TFT_DC, TFT_CS, TFT_RST);  //(dc, cs, rst)
 #endif
@@ -50,18 +50,25 @@ void setup(void) {
     Serial.println("*** start up NT35510 ***");
 #ifdef ARDUINO_TEENSY41
     tft.setBusWidth(16);
-#else    
+#else
     tft.setBusWidth(8);
 #endif
     tft.begin(DISPLAY_TYPE, DISPLAY_SPEED_MHZ);
     tft.setBitDepth(24);
     tft.setRotation(DISPLAY_ROTATION);
+    tft.displayInfo();
 
-    tft.fillScreen(RED);
-    delay(500);
-    tft.fillScreen(GREEN);
-    delay(500);
-    tft.fillScreen(BLUE);
+    //tft.fillScreen(RED);
+    tft.fillRect(0, 0, tft.width() / 2, tft.height(), RED);
+    tft.fillRect24BPP(tft.width() / 2, 0, tft.width() / 2, tft.height(), tft.color888(0xff, 0, 0));
+    delay(1000);
+    //tft.fillScreen(GREEN);
+    tft.fillRect(0, 0, tft.width() / 2, tft.height(), GREEN);
+    tft.fillRect24BPP(tft.width() / 2, 0, tft.width() / 2, tft.height(), tft.color888(0, 0xff, 0));
+    delay(1000);
+    //tft.fillScreen(BLUE);
+    tft.fillRect(0, 0, tft.width() / 2, tft.height(), BLUE);
+    tft.fillRect24BPP(tft.width() / 2, 0, tft.width() / 2, tft.height(), tft.color888(0, 0, 0xff));
     delay(500);
 
     tft.writeRect(50, 50,
@@ -82,10 +89,14 @@ void fillScreenOneColorRange(uint32_t color_start, uint32_t color_end) {
     int band_height = tft.height() / 2;
     int band_start_x = (tft.width() - (band_width * 256)) / 2;
 
-    for (uint16_t i = 0; i < 256; i++) {
-        r = rs + (((uint32_t)(re - rs)) * i) / 256;
-        g = gs + (((uint32_t)(ge - gs)) * i) / 256;
-        b = bs + (((uint32_t)(be - bs)) * i) / 256;
+    Serial.printf("fillScreenOneColorRange %x(%x) : %x(%x)\n", 
+            color_start, tft.color565(rs, gs, bs), 
+            color_end, tft.color565(re, ge, be));
+
+    for (uint32_t i = 0; i < 256; i++) {
+        r = rs + (((uint32_t)(re - rs)) * i + 128) / 256;
+        g = gs + (((uint32_t)(ge - gs)) * i + 128) / 256;
+        b = bs + (((uint32_t)(be - bs)) * i + 128) / 256;
         tft.fillRect(i * band_width + band_start_x, 0, band_width, band_height, tft.color565(r, g, b));
         tft.fillRect24BPP(i * band_width + band_start_x, band_height, band_width, band_height, tft.color888(r, g, b));
     }
