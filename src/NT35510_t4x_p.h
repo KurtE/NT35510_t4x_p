@@ -167,6 +167,9 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     uint8_t setBitDepth(uint8_t bitDepth);
     uint8_t getBitDepth();
 
+    void setBusWidth(uint8_t busWidth) {_bus_width = busWidth;}
+    uint8_t getBusWidth() {return _bus_width;}
+
     void setFrameRate(uint8_t frRate);
     uint8_t getFrameRate();
 

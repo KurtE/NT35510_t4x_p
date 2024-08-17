@@ -48,6 +48,11 @@ void setup(void) {
         ;
 
     Serial.println("*** start up NT35510 ***");
+#ifdef ARDUINO_TEENSY41
+    tft.setBusWidth(16);
+#else    
+    tft.setBusWidth(8);
+#endif
     tft.begin(DISPLAY_TYPE, DISPLAY_SPEED_MHZ);
     tft.setBitDepth(24);
     tft.setRotation(DISPLAY_ROTATION);

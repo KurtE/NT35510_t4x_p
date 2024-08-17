@@ -32,7 +32,12 @@ void inline VDBGPrintf(...){};
 
 FLASHMEM NT35510_t4x_p::NT35510_t4x_p(int8_t dc, int8_t cs, int8_t rst)
     : Teensy_Parallel_GFX(_TFTWIDTH, _TFTHEIGHT), _dc(dc), _cs(cs), _rst(rst),
-      _data_pins{DISPLAY_D0, DISPLAY_D1, DISPLAY_D2, DISPLAY_D3, DISPLAY_D4, DISPLAY_D5, DISPLAY_D6, DISPLAY_D7},
+      _data_pins{DISPLAY_D0, DISPLAY_D1, DISPLAY_D2, DISPLAY_D3, DISPLAY_D4, DISPLAY_D5, DISPLAY_D6, DISPLAY_D7,
+  #if defined(DISPLAY_D8)
+      DISPLAY_D8, DISPLAY_D9, DISPLAY_D10, DISPLAY_D11, DISPLAY_D12, DISPLAY_D13, DISPLAY_D14, DISPLAY_D15}, 
+#else
+      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+#endif      
       _wr_pin(DISPLAY_WR), _rd_pin(DISPLAY_RD) {
 }
 
@@ -71,6 +76,7 @@ FLASHMEM void NT35510_t4x_p::begin(uint8_t display_name, uint8_t baud_speed_mhz)
         break;
     }
     DBGPrintf("Bus speed: %d Mhz Div: %d\n", baud_speed_mhz, _baud_div);
+    DBGPrintf("CS:%u DC:%u RST:%u\n", _cs, _dc, _rst);
     pinMode(_cs, OUTPUT);  // CS
     pinMode(_dc, OUTPUT);  // DC
     pinMode(_rst, OUTPUT); // RST
@@ -85,9 +91,9 @@ FLASHMEM void NT35510_t4x_p::begin(uint8_t display_name, uint8_t baud_speed_mhz)
 
     delay(200);
     digitalWrite(_rst, LOW);
-    delay(800);
+    delay(300);
     digitalWriteFast(_rst, HIGH);
-    delay(800);
+    delay(300);
 
     FlexIO_Init();
 
@@ -1011,7 +1017,7 @@ FLASHMEM bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, ui
 FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     /* Get a FlexIO channel */
     // lets assume D0 is the valid one...
-    DBGPrintf("FlexIO_Init: D0:%u WR:%u RD:%u\n", _data_pins[0], _wr_pin, _rd_pin);
+    DBGPrintf("FlexIO_Init: D0:%u bus_width:%u WR:%u RD:%u\n", _data_pins[0],  _bus_width, _wr_pin, _rd_pin);
     DBGFlush();
     pFlex = FlexIOHandler::mapIOPinToFlexIOHandler(_data_pins[0], _flexio_D0);
     // pFlex = FlexIOHandler::flexIOHandler_list[1]; // use FlexIO2
@@ -2078,16 +2084,20 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     }
     /* Write the last pixel */
     waitWriteShiftStat(__LINE__);
-    p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+    if (_bus_width == 16) {
+        p->TIMSTAT |= _flexio_timer_mask;
+        p->SHIFTBUF[_write_shifter] = color;
+    } else {
+        p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
-    waitWriteShiftStat(__LINE__);
-    p->TIMSTAT |= _flexio_timer_mask;
-
-    p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
-    CSHigh();
+        waitWriteShiftStat(__LINE__);
+        p->TIMSTAT |= _flexio_timer_mask;
+        p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+    }
 
     /*Wait for transfer to be completed */
     waitTimStat(__LINE__);
+    CSHigh();
     microSecondDelay();
 }
 
@@ -2300,16 +2310,21 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
         while (count_pixels--) {
             uint8_t r, g, b;
             waitReadShiftStat(__LINE__);
-            // digitalToggleFast(2);
-            r = read_shiftbuf_byte();
+            if (_bus_width == 16) {
+                uint16_t w = p->SHIFTBUF[_read_shifter] >> 16;
+                r = w >> 8;
+                g = w;
+                waitReadShiftStat(__LINE__);
+                b = read_shiftbuf_byte();
+            } else {
+                r = read_shiftbuf_byte();
 
-            waitReadShiftStat(__LINE__);
-            // digitalToggleFast(2);
-            g = read_shiftbuf_byte();
+                waitReadShiftStat(__LINE__);
+                g = read_shiftbuf_byte();
 
-            waitReadShiftStat(__LINE__);
-            // digitalToggleFast(2);
-            b = read_shiftbuf_byte();
+                waitReadShiftStat(__LINE__);
+                b = read_shiftbuf_byte();
+            }
 
             *pcolors++ = color565(r, g, b);
             #ifdef DEBUG

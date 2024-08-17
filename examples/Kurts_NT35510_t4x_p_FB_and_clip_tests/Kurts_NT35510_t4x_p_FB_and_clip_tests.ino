@@ -17,7 +17,7 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 20
+#define NT35510X_SPEED_MHZ 30
 
 
 #include <MemoryHexDump.h>
@@ -107,6 +107,11 @@ void setup() {
     tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * 2 + 32);
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
+#ifdef ARDUINO_TEENSY41
+
+    tft.setBusWidth(16);
+#endif
+
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
     tft.setBitDepth(16);
