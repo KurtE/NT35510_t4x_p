@@ -48,6 +48,10 @@ void setup(void) {
         ;
 
     Serial.println("*** start up NT35510 ***");
+    if (CrashReport) {
+      Serial.print(CrashReport);
+      next();
+    }
 #ifdef ARDUINO_TEENSY41
     tft.setBusWidth(16);
 #else
@@ -71,12 +75,50 @@ void setup(void) {
     tft.fillRect24BPP(tft.width() / 2, 0, tft.width() / 2, tft.height(), tft.color888(0, 0, 0xff));
     delay(500);
 
-    tft.writeRect(50, 50,
-                  gimp_image.width, gimp_image.height, (uint16_t*)gimp_image.pixel_data);
+    tft.writeRect(tft.CENTER, 50,
+                  gimp_image.width, gimp_image.height, (uint16_t *)gimp_image.pixel_data);
 
     delay(1000);
-    tft.writeRect(tft.width() - (gimp_image_hear.width + 50), tft.height() - (gimp_image_hear.height + 50),
-                  gimp_image_hear.width, gimp_image_hear.height, (uint16_t*)gimp_image_hear.pixel_data);
+    tft.writeRect(tft.width() - (gimp_image_hear.width + 20), tft.CENTER,
+                  gimp_image_hear.width, gimp_image_hear.height, (uint16_t *)gimp_image_hear.pixel_data);
+#ifdef ARDUINO_TEENSY41
+    // See about writeRect from EXTMEM
+    delay(1000);
+    uint16_t *pextmem_image = (uint16_t *)extmem_malloc(gimp_image.width * gimp_image_hear.height * 2);
+    if (pextmem_image) {
+        Serial.printf("Try to output image again from EXTMEM: %p\n", pextmem_image);
+        memcpy(pextmem_image, gimp_image.pixel_data, gimp_image.width * gimp_image_hear.height * 2);
+        tft.writeRect(tft.CENTER, tft.height() - (gimp_image.height + 50),
+                      gimp_image.width, gimp_image.height, pextmem_image);
+        extmem_free(pextmem_image);
+    }
+    pextmem_image = (uint16_t *)extmem_malloc(gimp_image_hear.width * gimp_image_hear.height * 2);
+    if (pextmem_image) {
+        Serial.printf("Try to output image again from EXTMEM: %p\n", pextmem_image);
+        memcpy(pextmem_image, gimp_image_hear.pixel_data, gimp_image_hear.width * gimp_image_hear.height * 2);
+        tft.writeRect(20, tft.CENTER,
+                      gimp_image_hear.width, gimp_image_hear.height, pextmem_image);
+        extmem_free(pextmem_image);
+    }
+    next();
+
+    // Whole screen size image.
+    pextmem_image = (uint16_t *)extmem_malloc(tft.width() * tft.height() * 2);
+    if (pextmem_image) {
+        Serial.printf("Allocated large buffer: %p\n", pextmem_image); Serial.flush();
+        uint32_t pixel_count = tft.width() * tft.height();
+        uint16_t *pcolor = pextmem_image;
+        while (pixel_count--) *pcolor++ = tft.color565(0x40, 0, 0);
+
+        Serial.println("Call writeRect");
+        tft.writeRect(0, 0, tft.width(), tft.height(), pextmem_image);
+        extmem_free(pextmem_image);
+
+    }
+
+
+
+#endif
 }
 
 void fillScreenOneColorRange(uint32_t color_start, uint32_t color_end) {
@@ -89,9 +131,9 @@ void fillScreenOneColorRange(uint32_t color_start, uint32_t color_end) {
     int band_height = tft.height() / 2;
     int band_start_x = (tft.width() - (band_width * 256)) / 2;
 
-    Serial.printf("fillScreenOneColorRange %x(%x) : %x(%x)\n", 
-            color_start, tft.color565(rs, gs, bs), 
-            color_end, tft.color565(re, ge, be));
+    Serial.printf("fillScreenOneColorRange %x(%x) : %x(%x)\n",
+                  color_start, tft.color565(rs, gs, bs),
+                  color_end, tft.color565(re, ge, be));
 
     for (uint32_t i = 0; i < 256; i++) {
         r = rs + (((uint32_t)(re - rs)) * i + 128) / 256;
@@ -107,10 +149,14 @@ uint32_t colors[] = { tft.color888(255, 0, 0), tft.color888(0, 255, 0), tft.colo
 uint8_t color_index = 0xff;
 
 void loop() {
-    Serial.println("Press any key to continue");
-    while (Serial.read() == -1) {}
-    while (Serial.read() != -1) {}
+    next();
     color_index++;
     if (color_index == (sizeof(colors) / sizeof(colors[0]))) color_index = 0;
     fillScreenOneColorRange(tft.color888(0, 0, 0), colors[color_index]);
+}
+
+void next() {
+    Serial.println("Press any key to continue");
+    while (Serial.read() == -1) {}
+    while (Serial.read() != -1) {}
 }

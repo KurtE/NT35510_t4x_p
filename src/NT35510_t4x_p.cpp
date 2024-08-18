@@ -1557,7 +1557,7 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *
 }
 
 FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t length) {
-    //Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u\n", cmd, value, length, _bitDepth);
+    Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u %u\n", cmd, value, length, _bitDepth, _bus_width);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
@@ -1612,32 +1612,21 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
             }
         } else {
             if (_bus_width == 16) {
-                for (uint32_t i = 0; i < length - 1U; i++) {
+                while (length--) {
                     waitWriteShiftStat(__LINE__);
+                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
                     p->SHIFTBUF[_write_shifter] = *value++;
                 }
-                waitWriteShiftStat(__LINE__);
-                p->TIMSTAT |= _flexio_timer_mask;
-
-                p->SHIFTBUF[_write_shifter] = *value++;
             } else {
-                for (uint32_t i = 0; i < length - 1U; i++) {
+                while (length--) {
                     buf = *value++;
                     waitWriteShiftStat(__LINE__);
                     p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
 
+                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
                     waitWriteShiftStat(__LINE__);
                     p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
                 }
-                buf = *value++;
-                /* Write the last byte */
-                waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
-
-                waitWriteShiftStat(__LINE__);
-                p->TIMSTAT |= _flexio_timer_mask;
-
-                p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
             }
         }
 
@@ -2006,6 +1995,7 @@ void NT35510_t4x_p::endWrite16BitColors() {
 
 //FASTRUN void NT35510_t4x_p::write16BitColor(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, const uint16_t *pcolors, uint16_t count) {
 FASTRUN void NT35510_t4x_p::writeRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *pcolors) {
+    Serial.printf("NT35510_t4x_p::writeRectFlexIO(%d, %d, %d, %d, %p)\n", x, y, w, h, pcolors);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
@@ -2347,6 +2337,7 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
 //=============================================================================
 bool NT35510_t4x_p::writeRectAsyncFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
 {
+    Serial.println("*** writeRectAsyncFlexIO ***");
     // Start off only supporting shifters with DMA Requests
     if (hw->shifters_dma_channel[SHIFTER_DMA_REQUEST] != 0xff) {
         pushPixels16bitDMA(pcolors, x, y, x+w-1, y + h - 1);
