@@ -53,7 +53,7 @@ uint8_t *tft_frame_buffer = nullptr;
 
 #ifdef ARDUINO_TEENSY41
 extern "C" {
-extern uint8_t external_psram_size;
+    extern uint8_t external_psram_size;
 }
 
 NT35510_t4x_p tft = NT35510_t4x_p(10, 8, 9);  //(dc, cs, rst)
@@ -139,6 +139,18 @@ void setup() {
     tft.fillScreen(NT35510_GREEN);
     delay(500);
     tft.fillScreen(NT35510_BLUE);
+
+    if (tft_frame_buffer) {
+        delay(500);
+        if (!tft.useFrameBuffer(true)) Serial.println("Use Frame buffer failed");
+        tft.fillScreen(NT35510_YELLOW);
+        tft.updateScreen();
+        delay(500);
+        tft.fillScreen(NT35510_PINK);
+        tft.updateScreen();
+        delay(500);
+    }
+
     WaitForUserInput();
     //
     //  button.initButton(&tft, 200, 125, 100, 40, NT35510_GREEN, NT35510_YELLOW, NT35510_RED, "UP", 1, 1);
@@ -447,13 +459,18 @@ const uint8_t pict4bpp[] = {
 
 
 
+uint16_t colors[] = { NT35510_BLUE, NT35510_RED, NT35510_GREEN, NT35510_BLACK, NT35510_WHITE, NT35510_YELLOW, NT35510_CYAN, NT35510_PINK };
+uint8_t color_index = -1;
 void drawTestScreen() {
     Serial.printf("Use FB: %d ", use_fb);
     Serial.flush();
     tft.useFrameBuffer(use_fb);
     SetupOrClearClipRectAndOffsets();
     uint32_t start_time = millis();
-    tft.fillScreen(use_fb ? NT35510_RED : NT35510_BLACK);
+    color_index++;
+    if (color_index == (sizeof(colors) / sizeof(colors[0]))) color_index = 0;
+    tft.fillScreen(colors[color_index]);
+    //tft.fillScreen(use_fb ? NT35510_RED : NT35510_BLACK);
     //tft.setFont(Inconsolata_60);
     tft.setFont(Arial_24_Bold);
     tft.setTextColor(NT35510_WHITE);
@@ -491,10 +508,11 @@ void drawTestScreen() {
     tft.fillRect(BAND_START_X + BAND_WIDTH * 7, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, NT35510_PINK);
     memset(pixel_data, 0, sizeof(pixel_data));
     tft.readRect(BAND_START_X, BAND_START_Y, BAND_WIDTH * 8, BAND_HEIGHT, pixel_data);
+#if 0
     Serial.printf("%04X %04X %04X %04X %04X %04X %04X %04X\n",
                   NT35510_RED, NT35510_GREEN, NT35510_BLUE, NT35510_BLACK, NT35510_WHITE, NT35510_YELLOW, NT35510_CYAN, NT35510_PINK);
     MemoryHexDump(Serial, pixel_data, BAND_WIDTH * 8 * 2, true, "\nColor bars:\n");
-
+#endif
     tft.writeRect(BAND_START_X, BAND_START_Y + BAND_HEIGHT + 3, BAND_WIDTH * 8, BAND_HEIGHT, pixel_data);
     //WaitForUserInput();
 
@@ -571,9 +589,6 @@ void drawTestScreen() {
     Serial.printf("UL:%x UR:%x, LL:%x, LR:%x\n", tft.readPixel(0, 0), tft.readPixel(tft.width() - 1, 0),
                   tft.readPixel(tft.height() - 1, 0), tft.readPixel(tft.width() - 1, tft.height() - 1));
 
-    if (use_fb) {
-      MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 4, true, "\n*** Frame Buffer ***\n");
-    }
     if (use_dma) {
         Serial.println("$$$ Using UpdateScreenAsync");
         tft.updateScreenAsync();

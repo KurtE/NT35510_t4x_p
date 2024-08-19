@@ -227,10 +227,10 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     uint16_t read_shiftbuf_byte() __attribute__((always_inline)) {
         #if !defined(ARDUINO_TEENSY40)
-        return p->SHIFTBUFBYS[_read_shifter];
+        return _pflexio_imxrt->SHIFTBUFBYS[_read_shifter];
         #else
-        if (_bus_width != 10) return p->SHIFTBUFBYS[_read_shifter];
-        uint16_t data = p->SHIFTBUF[_read_shifter] >> 16; // 10 bits but shifter does 16
+        if (_bus_width != 10) return _pflexio_imxrt->SHIFTBUFBYS[_read_shifter];
+        uint16_t data = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16; // 10 bits but shifter does 16
         return ((data >> 2) & 0xf0) | (data & 0xf);
         #endif
     }
@@ -242,7 +242,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
            WRITE_TIMER_TO = 20 };
     void waitWriteShiftStat(int error_identifier = 0) __attribute__((always_inline)) {
         elapsedMillis em = 0;
-        while (0 == (p->SHIFTSTAT & _write_shifter_mask)) {
+        while (0 == (_pflexio_imxrt->SHIFTSTAT & _write_shifter_mask)) {
             if (em > WRITE_SHIFT_TO) {
                 Serial.printf(">>>waitWriteShiftStat(%d) TO\n", error_identifier);
                 if (Serial.available()) {
@@ -261,7 +261,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     void waitReadShiftStat(int error_identifier = 0) __attribute__((always_inline)) {
         elapsedMillis em = 0;
-        while (0 == (p->SHIFTSTAT & _read_shifter_mask)) {
+        while (0 == (_pflexio_imxrt->SHIFTSTAT & _read_shifter_mask)) {
             if (em > READ_SHIFT_TO) {
                 Serial.printf(">>>waitReadShiftStat(%d) TO\n", error_identifier);
                 if (Serial.available()) {
@@ -280,7 +280,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     void waitTimStat(int error_identifier = 0) __attribute__((always_inline)) {
         elapsedMillis em = 0;
-        while (0 == (p->TIMSTAT & _flexio_timer_mask)) {
+        while (0 == (_pflexio_imxrt->TIMSTAT & _flexio_timer_mask)) {
             if (em > WRITE_SHIFT_TO) {
                 Serial.printf(">>>waitWriteShiftStat(%d) TO\n", error_identifier);
                 if (Serial.available()) {
@@ -301,6 +301,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     void write16BitColor(uint16_t color);
     void endWrite16BitColors();
 //    void write16BitColor(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, const uint16_t *pcolors, uint16_t count);
+    void updateScreenFlexIO();
     void writeRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *pcolors);
     void fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
 
@@ -311,8 +312,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
   protected:
   private:
     uint8_t _display_name = 0;
-    FlexIOHandler *pFlex;
-    IMXRT_FLEXIO_t *p;
+    FlexIOHandler *_pFlex;
+    IMXRT_FLEXIO_t *_pflexio_imxrt;
     const FlexIOHandler::FLEXIO_Hardware_t *hw;
     static DMAChannel flexDma;
     static DMASetting _dmaSettings[2];

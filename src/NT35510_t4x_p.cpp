@@ -436,6 +436,7 @@ FLASHMEM void NT35510_t4x_p::displayInit(uint8_t disp_name) {
   uint8_t ini32[] = {0x55};
   writeRegM(NT35510_COLMOD, sizeof(ini32), ini32);
 
+  CSLow();
   output_command_helper(NT35510_SLPOUT);
   CSHigh();
 
@@ -913,13 +914,13 @@ FASTRUN void NT35510_t4x_p::microSecondDelay() {
 }
 
 FASTRUN void NT35510_t4x_p::gpioWrite() {
-    pFlex->setIOPinToFlexMode(_wr_pin);
+    _pFlex->setIOPinToFlexMode(_wr_pin);
     pinMode(_rd_pin, OUTPUT);
     digitalWriteFast(_rd_pin, HIGH);
 }
 
 FASTRUN void NT35510_t4x_p::gpioRead() {
-    pFlex->setIOPinToFlexMode(_rd_pin);
+    _pFlex->setIOPinToFlexMode(_rd_pin);
     pinMode(_wr_pin, OUTPUT);
     digitalWriteFast(_wr_pin, HIGH);
 }
@@ -935,8 +936,8 @@ FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uin
         DBGPrintf("\td0 != 0xff\n\n");
 
         uint8_t flexio_pin;
-        pFlex = FlexIOHandler::mapIOPinToFlexIOHandler(tft_d0, flexio_pin);
-        if ((pFlex == nullptr) || (flexio_pin == 0xff))
+        _pFlex = FlexIOHandler::mapIOPinToFlexIOHandler(tft_d0, flexio_pin);
+        if ((_pFlex == nullptr) || (flexio_pin == 0xff))
             return false;
 
         _data_pins[0] = tft_d0;
@@ -944,7 +945,7 @@ FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uin
         // lets dos some quick validation of the pins.
         for (uint8_t i = 1; i < _bus_width; i++) {
             flexio_pin++; // lets look up the what pins come next.
-            _data_pins[i] = pFlex->mapFlexPinToIOPin(flexio_pin);
+            _data_pins[i] = _pFlex->mapFlexPinToIOPin(flexio_pin);
             if (_data_pins[i] == 0xff) {
                 Serial.printf("Failed to find Teensy IO pin for Flexio pin %u\n", flexio_pin);
                 return false;
@@ -1001,21 +1002,21 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     // lets assume D0 is the valid one...
     DBGPrintf("FlexIO_Init: D0:%u bus_width:%u WR:%u RD:%u\n", _data_pins[0],  _bus_width, _wr_pin, _rd_pin);
     DBGFlush();
-    pFlex = FlexIOHandler::mapIOPinToFlexIOHandler(_data_pins[0], _flexio_D0);
-    // pFlex = FlexIOHandler::flexIOHandler_list[1]; // use FlexIO2
+    _pFlex = FlexIOHandler::mapIOPinToFlexIOHandler(_data_pins[0], _flexio_D0);
+    // _pFlex = FlexIOHandler::flexIOHandler_list[1]; // use FlexIO2
     /* Pointer to the port structure in the FlexIO channel */
-    p = &pFlex->port();
+    _pflexio_imxrt = &_pFlex->port();
     /* Pointer to the hardware structure in the FlexIO channel */
-    hw = &pFlex->hardware();
+    hw = &_pFlex->hardware();
 
-    DBGPrintf("\tFlex:%p port:%p hw:%p\n", pFlex, p, hw);
+    DBGPrintf("\tFlex:%p port:%p hw:%p\n", _pFlex, _pflexio_imxrt, hw);
 
     // lets do some quick validation of the pins.
     // BUGBUG: nibble mode sort of hard coded pin wise..
     //_bus_width = 8;
     uint8_t previous_flexio_pin = _flexio_D0;
     for (uint8_t i = 1; i < _bus_width; i++) {
-        uint8_t flexio_pin = pFlex->mapIOPinToFlexPin(_data_pins[i]);
+        uint8_t flexio_pin = _pFlex->mapIOPinToFlexPin(_data_pins[i]);
         if (flexio_pin != (previous_flexio_pin + 1)) {
             if ((i == 4) && (flexio_pin != 0xff)) {
                 DBGPrintf("\tNibble Mode: D4(%u): %u\n", _data_pins[4], flexio_pin);
@@ -1027,21 +1028,21 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     }
 
     // Lets reserve the timer and shifters.
-    _flexio_timer = pFlex->requestTimers();
+    _flexio_timer = _pFlex->requestTimers();
     _flexio_timer_mask = 1 << _flexio_timer;
 
-    if (pFlex->claimShifter(0)) {
+    if (_pFlex->claimShifter(0)) {
         _write_shifter = 0;
-    } else if (pFlex->claimShifter(4)) {
+    } else if (_pFlex->claimShifter(4)) {
         _write_shifter = 4;
     } else {
         Serial.println("NT35510_t4x_p::FlexIO_Init could not claim write Shifter(0 or 4");
     }
 
     // Maybe this is optional
-    if (pFlex->claimShifter(3)) {
+    if (_pFlex->claimShifter(3)) {
         _read_shifter = 3;
-    } else if (pFlex->claimShifter(7)) {
+    } else if (_pFlex->claimShifter(7)) {
         _read_shifter = 7;
     } else {
         Serial.println("NT35510_t4x_p::FlexIO_Init could not claim Read Shifter(3 or 7");
@@ -1051,8 +1052,8 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
 
     DBGPrintf("FlexIO Timer:%u Shifter Write:%u Read:%u\n", _flexio_timer, _write_shifter, _read_shifter);
 
-    _flexio_WR = pFlex->mapIOPinToFlexPin(_wr_pin);
-    _flexio_RD = pFlex->mapIOPinToFlexPin(_rd_pin);
+    _flexio_WR = _pFlex->mapIOPinToFlexPin(_wr_pin);
+    _flexio_RD = _pFlex->mapIOPinToFlexPin(_rd_pin);
 
     if ((_flexio_WR == 0xff) || (_flexio_RD == 0xff)) {
         Serial.printf("NT35510_t4x_p::FlexIO_Ini - RD/WR pin issue: WR:%u(%u) RD:%u(%u)\n", _wr_pin, _flexio_WR, _rd_pin, _flexio_RD);
@@ -1081,16 +1082,16 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     }
 
     /* Set clock */
-    pFlex->setClockSettings(3, 1, 0); // (480 MHz source, 1+1, 1+0) >> 480/2/1 >> 240Mhz
+    _pFlex->setClockSettings(3, 1, 0); // (480 MHz source, 1+1, 1+0) >> 480/2/1 >> 240Mhz
 
     /* Enable the clock */
     hw->clock_gate_register |= hw->clock_gate_mask;
 
-    pFlex->setIOPinToFlexMode(_wr_pin);
-    if (_rd_pin != 0xff)pFlex->setIOPinToFlexMode(_rd_pin);
+    _pFlex->setIOPinToFlexMode(_wr_pin);
+    if (_rd_pin != 0xff)_pFlex->setIOPinToFlexMode(_rd_pin);
 
     for (uint8_t pin_index = 0; pin_index < _bus_width; pin_index++) {
-        pFlex->setIOPinToFlexMode(_data_pins[pin_index]);
+        _pFlex->setIOPinToFlexMode(_data_pins[pin_index]);
     }
 
     // Lets print out all of the pins, configurations
@@ -1102,7 +1103,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     if (_rd_pin != 0xff) DBGPrintf("RD: pin:%u Port:%08x Mux:%08x\n", _rd_pin, *(portControlRegister(_rd_pin)), *(portConfigRegister(_rd_pin)));
 
     /* Enable the FlexIO with fast access */
-    p->CTRL = FLEXIO_CTRL_FLEXEN /*| FLEXIO_CTRL_FASTACC */;
+    _pflexio_imxrt->CTRL = FLEXIO_CTRL_FLEXEN /*| FLEXIO_CTRL_FASTACC */;
 
     gpioWrite();
 
@@ -1115,20 +1116,20 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat_Read() {
         return;
     flex_config = CONFIG_SNGLREAD;
     DBGPrintf("NT35510_t4x_p::FlexIO_Config_SnglBeat_Read - Enter\n");
-    p->CTRL &= ~FLEXIO_CTRL_FLEXEN;
-    // p->CTRL |= FLEXIO_CTRL_SWRST;
-    p->CTRL &= ~FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_FLEXEN;
+    // _pflexio_imxrt->CTRL |= FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_SWRST;
 
     gpioRead(); // write line high, pin 12(rst) as output
 
     /* Configure the shifters */
-    p->SHIFTCFG[_read_shifter] =
+    _pflexio_imxrt->SHIFTCFG[_read_shifter] =
         // FLEXIO_SHIFTCFG_INSRC                                                  /* Shifter input */
         FLEXIO_SHIFTCFG_SSTOP(0)     /* Shifter stop bit disabled */
         | FLEXIO_SHIFTCFG_SSTART(0)  /* Shifter start bit disabled and loading data on enabled */
         | FLEXIO_SHIFTCFG_PWIDTH(_bus_width - 1); /* Bus width */
 
-    p->SHIFTCTL[_read_shifter] =
+    _pflexio_imxrt->SHIFTCTL[_read_shifter] =
         FLEXIO_SHIFTCTL_TIMSEL(_flexio_timer)        /* Shifter's assigned timer index */
         | FLEXIO_SHIFTCTL_TIMPOL * (1)               /* Shift on posedge of shift clock */
         | FLEXIO_SHIFTCTL_PINCFG(0)                  /* Shifter's pin configured as input */
@@ -1137,11 +1138,11 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat_Read() {
         | FLEXIO_SHIFTCTL_SMOD(1);                   /* Shifter mode as recieve */
 
     /* Configure the timer for shift clock */
-    p->TIMCMP[_flexio_timer] =
+    _pflexio_imxrt->TIMCMP[_flexio_timer] =
         (((1 * 2) - 1) << 8)                /* TIMCMP[15:8] = number of beats x 2 – 1 */
         | (((NT35510_CLOCK_READ) / 2) - 1); /* TIMCMP[7:0] = baud rate divider / 2 – 1 ::: 30 = 8Mhz with current controller speed */
 
-    p->TIMCFG[_flexio_timer] =
+    _pflexio_imxrt->TIMCFG[_flexio_timer] =
         FLEXIO_TIMCFG_TIMOUT(0)       /* Timer output logic one when enabled and not affected by reset */
         | FLEXIO_TIMCFG_TIMDEC(0)     /* Timer decrement on FlexIO clock, shift clock equals timer output */
         | FLEXIO_TIMCFG_TIMRST(0)     /* Timer never reset */
@@ -1150,7 +1151,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat_Read() {
         | FLEXIO_TIMCFG_TSTOP(1)      /* Timer stop bit disabled */
         | FLEXIO_TIMCFG_TSTART * (0); /* Timer start bit disabled */
 
-    p->TIMCTL[_flexio_timer] =
+    _pflexio_imxrt->TIMCTL[_flexio_timer] =
         FLEXIO_TIMCTL_TRGSEL((((_read_shifter) << 2) | 1)) /* Timer trigger selected as shifter's status flag */
         | FLEXIO_TIMCTL_TRGPOL * (1)                       /* Timer trigger polarity as active low */
         | FLEXIO_TIMCTL_TRGSRC * (1)                       /* Timer trigger source as internal */
@@ -1161,11 +1162,11 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat_Read() {
 
 
     // Clear the shifter status 
-    p->SHIFTSTAT = _read_shifter_mask;
-    p->SHIFTERR = _read_shifter_mask;
+    _pflexio_imxrt->SHIFTSTAT = _read_shifter_mask;
+    _pflexio_imxrt->SHIFTERR = _read_shifter_mask;
     
     /* Enable FlexIO */
-    p->CTRL |= FLEXIO_CTRL_FLEXEN;
+    _pflexio_imxrt->CTRL |= FLEXIO_CTRL_FLEXEN;
     DBGPrintf("NT35510_t4x_p::FlexIO_Config_SnglBeat_Read - Exit\n");
 }
 
@@ -1175,8 +1176,8 @@ FASTRUN uint8_t NT35510_t4x_p::readCommand(uint16_t const cmd) {
     }
 
     FlexIO_Config_SnglBeat();
-    output_command_helper(cmd);
     CSLow();
+    output_command_helper(cmd);
     microSecondDelay();
 
 
@@ -1190,11 +1191,11 @@ FASTRUN uint8_t NT35510_t4x_p::readCommand(uint16_t const cmd) {
         #if 1
         waitReadShiftStat(__LINE__);
         // digitalToggleFast(2);
-        dummy = p->SHIFTBUF[_read_shifter] >> 16;
+        dummy = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16;
         #endif
         waitReadShiftStat(__LINE__);
         // digitalToggleFast(2);
-        data = p->SHIFTBUF[_read_shifter] >> 16;
+        data = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16;
 
     } else {
         #if 1
@@ -1222,8 +1223,8 @@ FASTRUN uint32_t NT35510_t4x_p::readCommandN(uint16_t const cmd, uint8_t count_b
     }
 
     FlexIO_Config_SnglBeat();
-    output_command_helper(cmd);
     CSLow();
+    output_command_helper(cmd);
 
     FlexIO_Clear_Config_SnglBeat();
     FlexIO_Config_SnglBeat_Read();
@@ -1251,28 +1252,28 @@ FASTRUN uint32_t NT35510_t4x_p::readCommandN(uint16_t const cmd, uint8_t count_b
 };
 
 void print_flexio_debug_data(FlexIOHandler *pFlex, uint8_t flexio_timer, uint8_t write_shifter, uint8_t read_shifter) {
-    IMXRT_FLEXIO_t *p = &pFlex->port();
+    IMXRT_FLEXIO_t *pimxrt_flexio = &pFlex->port();
     Serial.println("\n**********************************");
     Serial.printf("FlexIO Index: %u Timer:%u Write Shifter:%u Read Shifter:%u\n", pFlex->FlexIOIndex(), flexio_timer, write_shifter, read_shifter);
     Serial.printf("CCM_CDCDR: %x\n", CCM_CDCDR);
     Serial.printf("CCM FlexIO1: %x FlexIO2: %x FlexIO3: %x\n", CCM_CCGR5 & CCM_CCGR5_FLEXIO1(CCM_CCGR_ON),
                   CCM_CCGR3 & CCM_CCGR3_FLEXIO2(CCM_CCGR_ON), CCM_CCGR7 & CCM_CCGR7_FLEXIO3(CCM_CCGR_ON));
-    Serial.printf("VERID:%x PARAM:%x CTRL:%x PIN: %x\n", p->VERID, p->PARAM, p->CTRL, p->PIN);
-    Serial.printf("SHIFTSTAT:%x SHIFTERR=%x TIMSTAT=%x\n", p->SHIFTSTAT, p->SHIFTERR, p->TIMSTAT);
-    Serial.printf("SHIFTSIEN:%x SHIFTEIEN=%x TIMIEN=%x\n", p->SHIFTSIEN, p->SHIFTEIEN, p->TIMIEN);
-    Serial.printf("SHIFTSDEN:%x SHIFTSTATE=%x\n", p->SHIFTSDEN, p->SHIFTSTATE);
+    Serial.printf("VERID:%x PARAM:%x CTRL:%x PIN: %x\n", pimxrt_flexio->VERID, pimxrt_flexio->PARAM, pimxrt_flexio->CTRL, pimxrt_flexio->PIN);
+    Serial.printf("SHIFTSTAT:%x SHIFTERR=%x TIMSTAT=%x\n", pimxrt_flexio->SHIFTSTAT, pimxrt_flexio->SHIFTERR, pimxrt_flexio->TIMSTAT);
+    Serial.printf("SHIFTSIEN:%x SHIFTEIEN=%x TIMIEN=%x\n", pimxrt_flexio->SHIFTSIEN, pimxrt_flexio->SHIFTEIEN, pimxrt_flexio->TIMIEN);
+    Serial.printf("SHIFTSDEN:%x SHIFTSTATE=%x\n", pimxrt_flexio->SHIFTSDEN, pimxrt_flexio->SHIFTSTATE);
     Serial.print("SHIFTCTL:");
     for (int i = 0; i < 8; i++) {
-        Serial.printf(" %08x", p->SHIFTCTL[i]);
+        Serial.printf(" %08x", pimxrt_flexio->SHIFTCTL[i]);
     }
     Serial.print("\nSHIFTCFG:");
     for (int i = 0; i < 8; i++) {
-        Serial.printf(" %08x", p->SHIFTCFG[i]);
+        Serial.printf(" %08x", pimxrt_flexio->SHIFTCFG[i]);
     }
 
-    Serial.printf("\nTIMCTL:%x %x %x %x\n", p->TIMCTL[0], p->TIMCTL[1], p->TIMCTL[2], p->TIMCTL[3]);
-    Serial.printf("TIMCFG:%x %x %x %x\n", p->TIMCFG[0], p->TIMCFG[1], p->TIMCFG[2], p->TIMCFG[3]);
-    Serial.printf("TIMCMP:%x %x %x %x\n", p->TIMCMP[0], p->TIMCMP[1], p->TIMCMP[2], p->TIMCMP[3]);
+    Serial.printf("\nTIMCTL:%x %x %x %x\n", pimxrt_flexio->TIMCTL[0], pimxrt_flexio->TIMCTL[1], pimxrt_flexio->TIMCTL[2], pimxrt_flexio->TIMCTL[3]);
+    Serial.printf("TIMCFG:%x %x %x %x\n", pimxrt_flexio->TIMCFG[0], pimxrt_flexio->TIMCFG[1], pimxrt_flexio->TIMCFG[2], pimxrt_flexio->TIMCFG[3]);
+    Serial.printf("TIMCMP:%x %x %x %x\n", pimxrt_flexio->TIMCMP[0], pimxrt_flexio->TIMCMP[1], pimxrt_flexio->TIMCMP[2], pimxrt_flexio->TIMCMP[3]);
 }
 
 FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat() {
@@ -1284,20 +1285,20 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat() {
 
     gpioWrite();
 
-    p->CTRL &= ~FLEXIO_CTRL_FLEXEN;
-    // p->CTRL |= FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_FLEXEN;
+    // _pflexio_imxrt->CTRL |= FLEXIO_CTRL_SWRST;
     // Make sure we are not in reset...
-    p->CTRL &= ~FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_SWRST;
 
     /* Configure the shifters */
     // try setting it twice
-    p->SHIFTCFG[_write_shifter] =
+    _pflexio_imxrt->SHIFTCFG[_write_shifter] =
         FLEXIO_SHIFTCFG_INSRC * (1)  /* Shifter input */
         | FLEXIO_SHIFTCFG_SSTOP(0)   /* Shifter stop bit disabled */
         | FLEXIO_SHIFTCFG_SSTART(0)  /* Shifter start bit disabled and loading data on enabled */
         | FLEXIO_SHIFTCFG_PWIDTH(_bus_width - 1); /* Bus width */
 
-    p->SHIFTCTL[_write_shifter] =
+    _pflexio_imxrt->SHIFTCTL[_write_shifter] =
         FLEXIO_SHIFTCTL_TIMSEL(_flexio_timer) /* Shifter's assigned timer index */
         | FLEXIO_SHIFTCTL_TIMPOL * (0)        /* Shift on posedge of shift clock */
         | FLEXIO_SHIFTCTL_PINCFG(3)           /* Shifter's pin configured as output */
@@ -1306,11 +1307,11 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat() {
         | FLEXIO_SHIFTCTL_SMOD(2);            /* Shifter mode as transmit */
 
     /* Configure the timer for shift clock */
-    p->TIMCMP[_flexio_timer] =
+    _pflexio_imxrt->TIMCMP[_flexio_timer] =
         (((1 * 2) - 1) << 8)     /* TIMCMP[15:8] = number of beats x 2 – 1 */
         | ((_baud_div / 2) - 1); /* TIMCMP[7:0] = baud rate divider / 2 – 1 */
 
-    p->TIMCFG[_flexio_timer] =
+    _pflexio_imxrt->TIMCFG[_flexio_timer] =
         FLEXIO_TIMCFG_TIMOUT(0)       /* Timer output logic one when enabled and not affected by reset */
         | FLEXIO_TIMCFG_TIMDEC(0)     /* Timer decrement on FlexIO clock, shift clock equals timer output */
         | FLEXIO_TIMCFG_TIMRST(0)     /* Timer never reset */
@@ -1319,7 +1320,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat() {
         | FLEXIO_TIMCFG_TSTOP(0)      /* Timer stop bit disabled */
         | FLEXIO_TIMCFG_TSTART * (0); /* Timer start bit disabled */
 
-    p->TIMCTL[_flexio_timer] =
+    _pflexio_imxrt->TIMCTL[_flexio_timer] =
         FLEXIO_TIMCTL_TRGSEL((((_write_shifter) << 2) | 1)) /* Timer trigger selected as shifter's status flag */
         | FLEXIO_TIMCTL_TRGPOL * (1)                        /* Timer trigger polarity as active low */
         | FLEXIO_TIMCTL_TRGSRC * (1)                        /* Timer trigger source as internal */
@@ -1333,12 +1334,12 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_SnglBeat() {
     static uint8_t DEBUG_COUNT = 1;
     if (DEBUG_COUNT) {
         DEBUG_COUNT--;
-        print_flexio_debug_data(pFlex, _flexio_timer, _write_shifter, _read_shifter);
+        print_flexio_debug_data(_pFlex, _flexio_timer, _write_shifter, _read_shifter);
     }
     */
 
     /* Enable FlexIO */
-    p->CTRL |= FLEXIO_CTRL_FLEXEN;
+    _pflexio_imxrt->CTRL |= FLEXIO_CTRL_FLEXEN;
 }
 
 FASTRUN void NT35510_t4x_p::FlexIO_Clear_Config_SnglBeat() {
@@ -1347,20 +1348,20 @@ FASTRUN void NT35510_t4x_p::FlexIO_Clear_Config_SnglBeat() {
     DBGPrintf("NT35510_t4x_p::FlexIO_Clear_Config_SnglBeat() - Enter\n");
     flex_config = CONFIG_CLEAR;
 
-    p->CTRL &= ~FLEXIO_CTRL_FLEXEN;
-    // p->CTRL |= FLEXIO_CTRL_SWRST;
-    p->CTRL &= ~FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_FLEXEN;
+    // _pflexio_imxrt->CTRL |= FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_SWRST;
 
-    p->SHIFTCFG[_write_shifter] = 0;
-    p->SHIFTCTL[_write_shifter] = 0;
-    p->SHIFTSTAT = _write_shifter_mask;
-    p->TIMCMP[_flexio_timer] = 0;
-    p->TIMCFG[_flexio_timer] = 0;
-    p->TIMSTAT = _flexio_timer_mask; /* Timer start bit disabled */
-    p->TIMCTL[_flexio_timer] = 0;
+    _pflexio_imxrt->SHIFTCFG[_write_shifter] = 0;
+    _pflexio_imxrt->SHIFTCTL[_write_shifter] = 0;
+    _pflexio_imxrt->SHIFTSTAT = _write_shifter_mask;
+    _pflexio_imxrt->TIMCMP[_flexio_timer] = 0;
+    _pflexio_imxrt->TIMCFG[_flexio_timer] = 0;
+    _pflexio_imxrt->TIMSTAT = _flexio_timer_mask; /* Timer start bit disabled */
+    _pflexio_imxrt->TIMCTL[_flexio_timer] = 0;
 
     /* Enable FlexIO */
-    p->CTRL |= FLEXIO_CTRL_FLEXEN;
+    _pflexio_imxrt->CTRL |= FLEXIO_CTRL_FLEXEN;
     DBGPrintf("NT35510_t4x_p::FlexIO_Clear_Config_SnglBeat() - Exit\n");
 }
 
@@ -1375,21 +1376,21 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
     if (_bus_width > 8)  MulBeatWR_BeatQty = MulBeatWR_BeatQty / 2;            // we use 16 bits at a time for T4...
 
     /* Disable and reset FlexIO */
-    p->CTRL &= ~FLEXIO_CTRL_FLEXEN;
-    // p->CTRL |= FLEXIO_CTRL_SWRST;
-    p->CTRL &= ~FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_FLEXEN;
+    // _pflexio_imxrt->CTRL |= FLEXIO_CTRL_SWRST;
+    _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_SWRST;
 
     gpioWrite();
 
     for (i = 0; i <= SHIFTNUM - 1; i++) {
-        p->SHIFTCFG[_write_shifter + i] =
+        _pflexio_imxrt->SHIFTCFG[_write_shifter + i] =
             FLEXIO_SHIFTCFG_INSRC * (1U)       /* Shifter input from next shifter's output */
             | FLEXIO_SHIFTCFG_SSTOP(0U)        /* Shifter stop bit disabled */
             | FLEXIO_SHIFTCFG_SSTART(0U)       /* Shifter start bit disabled and loading data on enabled */
             | FLEXIO_SHIFTCFG_PWIDTH(_bus_width - 1); /* 8 bit shift width */
     }
 
-    p->SHIFTCTL[_write_shifter] =
+    _pflexio_imxrt->SHIFTCTL[_write_shifter] =
         FLEXIO_SHIFTCTL_TIMSEL(_flexio_timer) /* Shifter's assigned timer index */
         | FLEXIO_SHIFTCTL_TIMPOL * (0U)       /* Shift on posedge of shift clock */
         | FLEXIO_SHIFTCTL_PINCFG(3U)          /* Shifter's pin configured as output */
@@ -1398,7 +1399,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
         | FLEXIO_SHIFTCTL_SMOD(2U);           /* shifter mode transmit */
 
     for (i = 1; i <= SHIFTNUM - 1; i++) {
-        p->SHIFTCTL[_write_shifter + i] =
+        _pflexio_imxrt->SHIFTCTL[_write_shifter + i] =
             FLEXIO_SHIFTCTL_TIMSEL(_flexio_timer) /* Shifter's assigned timer index */
             | FLEXIO_SHIFTCTL_TIMPOL * (0U)       /* Shift on posedge of shift clock */
             | FLEXIO_SHIFTCTL_PINCFG(0U)          /* Shifter's pin configured as output disabled */
@@ -1406,16 +1407,16 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
             | FLEXIO_SHIFTCTL_PINPOL * (0U)       /* Shifter's pin active high */
             | FLEXIO_SHIFTCTL_SMOD(2U);           /* shifter mode transmit */
 
-        //p->SHIFTSTAT = 1 << (_write_shifter + i); // clear out any previous state
-        p->SHIFTERR = 1 << (_write_shifter + i); // clear out any previous state
+        //_pflexio_imxrt->SHIFTSTAT = 1 << (_write_shifter + i); // clear out any previous state
+        _pflexio_imxrt->SHIFTERR = 1 << (_write_shifter + i); // clear out any previous state
     }
 
     /* Configure the timer for shift clock */
-    p->TIMCMP[_flexio_timer] =
+    _pflexio_imxrt->TIMCMP[_flexio_timer] =
         ((MulBeatWR_BeatQty * 2U - 1) << 8) /* TIMCMP[15:8] = number of beats x 2 – 1 */
         | (_baud_div / 2U - 1U);            /* TIMCMP[7:0] = shift clock divide ratio / 2 - 1 */
 
-    p->TIMCFG[_flexio_timer] = FLEXIO_TIMCFG_TIMOUT(0U)       /* Timer output logic one when enabled and not affected by reset */
+    _pflexio_imxrt->TIMCFG[_flexio_timer] = FLEXIO_TIMCFG_TIMOUT(0U)       /* Timer output logic one when enabled and not affected by reset */
                                | FLEXIO_TIMCFG_TIMDEC(0U)     /* Timer decrement on FlexIO clock, shift clock equals timer output */
                                | FLEXIO_TIMCFG_TIMRST(0U)     /* Timer never reset */
                                | FLEXIO_TIMCFG_TIMDIS(2U)     /* Timer disabled on timer compare */
@@ -1423,7 +1424,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
                                | FLEXIO_TIMCFG_TSTOP(0U)      /* Timer stop bit disabled */
                                | FLEXIO_TIMCFG_TSTART * (0U); /* Timer start bit disabled */
 
-    p->TIMCTL[_flexio_timer] =
+    _pflexio_imxrt->TIMCTL[_flexio_timer] =
         FLEXIO_TIMCTL_TRGSEL((_write_shifter << 2) | 1U) /* Timer trigger selected as highest shifter's status flag */
         | FLEXIO_TIMCTL_TRGPOL * (1U)                    /* Timer trigger polarity as active low */
         | FLEXIO_TIMCTL_TRGSRC * (1U)                    /* Timer trigger source as internal */
@@ -1434,9 +1435,9 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
 
 
     /* Enable FlexIO */
-    p->CTRL |= FLEXIO_CTRL_FLEXEN;
+    _pflexio_imxrt->CTRL |= FLEXIO_CTRL_FLEXEN;
 
-    //print_flexio_debug_data(pFlex, _flexio_timer, _write_shifter, _read_shifter);
+    //print_flexio_debug_data(_pFlex, _flexio_timer, _write_shifter, _read_shifter);
 
    // configure interrupts
     if (hw->shifters_dma_channel[SHIFTER_DMA_REQUEST] == 0xff) {
@@ -1446,11 +1447,11 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
         NVIC_SET_PRIORITY(hw->flex_irq, FLEXIO_ISR_PRIORITY);
         
         // disable interrupts until later
-        p->SHIFTSIEN &= ~(1 << SHIFTER_IRQ);
-        p->TIMIEN &= ~_flexio_timer_mask;
+        _pflexio_imxrt->SHIFTSIEN &= ~(1 << SHIFTER_IRQ);
+        _pflexio_imxrt->TIMIEN &= ~_flexio_timer_mask;
 
     } else {
-        p->SHIFTSDEN |= 1U << (SHIFTER_DMA_REQUEST); // enable DMA trigger when shifter status flag is set on shifter SHIFTER_DMA_REQUEST
+        _pflexio_imxrt->SHIFTSDEN |= 1U << (SHIFTER_DMA_REQUEST); // enable DMA trigger when shifter status flag is set on shifter SHIFTER_DMA_REQUEST
     }
     DBGPrintf("NT35510_t4x_p::FlexIO_Config_MultiBeat() - Exit\n");
 }
@@ -1462,17 +1463,24 @@ FASTRUN void NT35510_t4x_p::write_command_and_data(uint32_t cmd, uint8_t val) {
     /* Assert CS, RS pins */
 
     // delay(1);
+    CSLow();
     output_command_helper(cmd);
     microSecondDelay();
 
-    CSLow();
     DCHigh();
     microSecondDelay();
-    p->SHIFTBUF[_write_shifter] = 0;
-    waitWriteShiftStat(__LINE__);
+    if (_bus_width == 16) {
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = val;
+        waitWriteShiftStat(__LINE__);
+    } else {
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = 0;
+        waitWriteShiftStat(__LINE__);
 
-    p->SHIFTBUF[_write_shifter] = generate_output_word(val);
-    waitWriteShiftStat(__LINE__);
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(val);
+        waitWriteShiftStat(__LINE__);
+    }
     waitTimStat(__LINE__);
     microSecondDelay();
     CSHigh();
@@ -1483,39 +1491,27 @@ FASTRUN void NT35510_t4x_p::write_command_and_data(uint32_t cmd, uint8_t val) {
 void NT35510_t4x_p::writeRegM(uint16_t addr, uint8_t len, uint8_t data[]) {
   for (uint16_t i = 0; i < len; i++)
   {
-#if 1
     write_command_and_data(addr++, *data++);
-#else    
-    output_command_helper(addr++);
-    microSecondDelay();
-    CSLow();
-    DCHigh();
-    microSecondDelay();
-    p->SHIFTBUF[_write_shifter] = 0;
-    waitWriteShiftStat(__LINE__);
-    p->SHIFTBUF[_write_shifter] = generate_output_word(*data++);
-    waitWriteShiftStat(__LINE__);
-    waitTimStat(__LINE__);
-    microSecondDelay();
-    CSHigh();
-#endif
   }    
 }
 
 
 FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
-    CSLow();
     DCLow();
-
+    microSecondDelay();
     /* Write command index */
     // This display commands are 16 bits so need handle.
     if (_bus_width == 16) {
-        p->SHIFTBUF[_write_shifter] = cmd;
-    } else {
-        p->SHIFTBUF[_write_shifter] = generate_output_word(cmd >> 8);  // high byte
         waitWriteShiftStat(__LINE__);
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = cmd;
+    } else {
+        waitWriteShiftStat(__LINE__);
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(cmd >> 8);  // high byte
+        waitWriteShiftStat(__LINE__);
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
         //waitTimStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = generate_output_word(cmd);  // low byte
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(cmd);  // low byte
     }
 
     /*Wait for transfer to be completed */
@@ -1526,7 +1522,6 @@ FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
 
     microSecondDelay();
     DCHigh();
-    CSHigh();
 }
 
 FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *value = NULL, uint32_t length = 0) {
@@ -1546,7 +1541,7 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *
 
     if (length) {
         for (i = 0; i < length; i++) {
-            p->SHIFTBUF[_write_shifter] = generate_output_word(*value++);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(*value++);
             waitWriteShiftStat(__LINE__);
         }
         waitTimStat(__LINE__);
@@ -1557,16 +1552,16 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_8(uint32_t const cmd, const uint8_t *
 }
 
 FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t *value, uint32_t length) {
-    Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u %u\n", cmd, value, length, _bitDepth, _bus_width);
+    //Serial.printf("NT35510_t4x_p::SglBeatWR_nPrm_16(%x, %p, %u) %u %u\n", cmd, value, length, _bitDepth, _bus_width);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
     FlexIO_Config_SnglBeat();
     uint16_t buf;
     /* Assert CS, RS pins */
+    CSLow();
     output_command_helper(cmd);
     microSecondDelay();
-    CSLow();
 
     if (length) {
         if (_bitDepth == 24) {
@@ -1580,20 +1575,20 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
                     color565toRGB(*value++, r1, g1, b1);
                     color565toRGB(*value++, r2, g2, b2);
                     waitWriteShiftStat(__LINE__);
-                    p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
                     waitWriteShiftStat(__LINE__);
-                    p->SHIFTBUF[_write_shifter] = (b1 << 8) | r2;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = (b1 << 8) | r2;
                     waitWriteShiftStat(__LINE__);
-                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
-                    p->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
+                    if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
                 }
                 if (length) {
                     color565toRGB(*value++, r1, g1, b1);
                     waitWriteShiftStat(__LINE__);
-                    p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
                     waitWriteShiftStat(__LINE__);
-                    p->TIMSTAT |= _flexio_timer_mask;
-                    p->SHIFTBUF[_write_shifter] = (b1 << 8);  // there is no R2...
+                    _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = (b1 << 8);  // there is no R2...
                 }
 
             } else {    
@@ -1602,30 +1597,32 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
                     buf = *value++;
                     color565toRGB(buf, r, g, b);
                     waitWriteShiftStat(__LINE__);
-                    p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(r);
                     waitWriteShiftStat(__LINE__);
-                    p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(g);
                     waitWriteShiftStat(__LINE__);
-                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
-                    p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+                    if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(b);
                 }
             }
         } else {
             if (_bus_width == 16) {
+                Serial.printf("\tBD:%u BW:%u length:%u\n", _bitDepth, _bus_width, length);
                 while (length--) {
+                    buf = *value++;
                     waitWriteShiftStat(__LINE__);
-                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
-                    p->SHIFTBUF[_write_shifter] = *value++;
+                    if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = buf;
                 }
             } else {
                 while (length--) {
                     buf = *value++;
                     waitWriteShiftStat(__LINE__);
-                    p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
 
-                    if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
+                    if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
                     waitWriteShiftStat(__LINE__);
-                    p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
                 }
             }
         }
@@ -1665,8 +1662,8 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
     uint32_t destinationModulo = 31 - (__builtin_clz(SHIFTNUM * sizeof(uint32_t))); // defines address range for circular DMA destination buffer
 
     FlexIO_Config_SnglBeat();
-    output_command_helper(cmd);
     CSLow();
+    output_command_helper(cmd);
     microSecondDelay();
 
     if (length < 8) {
@@ -1676,13 +1673,13 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
         for (uint32_t i = 0; i < length; i++) {
             buf = *newValue++;
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
         }
         // Wait for transfer to be completed
-        while (0 == (p->TIMSTAT & _flexio_timer_mask)) {
+        while (0 == (_pflexio_imxrt->TIMSTAT & _flexio_timer_mask)) {
         }
 
         microSecondDelay();
@@ -1722,7 +1719,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
         sourceAddressOffset = -sizeof(uint16_t);                                   // read values in reverse order
         minorLoopOffset = 2 * minorLoopBytes;                                      // source address offset at end of minor loop to advance to next minor loop
         sourceAddressLastOffset = minorLoopOffset - TotalSize;                     // source address offset at completion to reset to beginning
-        destinationAddress = (uint32_t *)&p->SHIFTBUFBYS[SHIFTNUM - 1];            // last 32bit shifter address (with reverse byte order)
+        destinationAddress = (uint32_t *)&_pflexio_imxrt->SHIFTBUFBYS[SHIFTNUM - 1];            // last 32bit shifter address (with reverse byte order)
         destinationAddressOffset = -sizeof(uint32_t);                              // write words in reverse order
         destinationAddressLastOffset = 0;
 
@@ -1835,17 +1832,17 @@ FASTRUN void NT35510_t4x_p::flexDma_Callback() {
     data is still in the process of being shifted out from the second-to-last major iteration. In this state, all the status flags are cleared.
     when the second-to-last major iteration is fully shifted out, the final data is transfered from the buffers into the shifters which sets all the status flags.
     if you have only one major iteration, the status flags will be immediately set before the interrupt is called, so the while loop will be skipped. */
-    while (0 == (p->SHIFTSTAT & (1U << (SHIFTNUM - 1)))) {
+    while (0 == (_pflexio_imxrt->SHIFTSTAT & (1U << (SHIFTNUM - 1)))) {
     }
 
     /* Wait the last multi-beat transfer to be completed. Clear the timer flag
     before the completing of the last beat. The last beat may has been completed
     at this point, then code would be dead in the while() below. So mask the
     while() statement and use the software delay .*/
-    p->TIMSTAT |= (1U << 0U);
+    _pflexio_imxrt->TIMSTAT |= (1U << 0U);
 
     /* Wait timer flag to be set to ensure the completing of the last beat.
-    while(0 == (p->TIMSTAT & (1U << 0U)))
+    while(0 == (_pflexio_imxrt->TIMSTAT & (1U << 0U)))
     {
     }
     */
@@ -1863,27 +1860,27 @@ FASTRUN void NT35510_t4x_p::flexDma_Callback() {
         for (uint32_t i = 0; i < (MulBeatCountRemain); i++) {
             value = *MulBeatDataRemain++;
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(value >> 8);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(value >> 8);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(value & 0xFF);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(value & 0xFF);
         }
-        p->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
         /*
         value = *MulBeatDataRemain++;
         //Write the last byte
 
-        while(0 == (p->SHIFTSTAT & _flexio_timer_mask))
+        while(0 == (_pflexio_imxrt->SHIFTSTAT & _flexio_timer_mask))
             {
             }
-        p->SHIFTBUF[_write_shifter] = generate_output_word(value >> 8);
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(value >> 8);
 
-        while(0 == (p->SHIFTSTAT & _flexio_timer_mask))
+        while(0 == (_pflexio_imxrt->SHIFTSTAT & _flexio_timer_mask))
         {
         }
-        p->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
 
-        p->SHIFTBUF[_write_shifter] = generate_output_word(value & 0xFF);
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(value & 0xFF);
         */
         /*Wait for transfer to be completed */
         waitTimStat();
@@ -1920,9 +1917,9 @@ void NT35510_t4x_p::beginWrite16BitColors() {
     DBGPrintf("NT35510_t4x_p::beginWrite16BitColors() - 0x2c\n");
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
+    CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
-    CSLow();
     _write16BitColor_save_pixel = (uint32_t)-1;
 }
 
@@ -1939,11 +1936,11 @@ void NT35510_t4x_p::write16BitColor(uint16_t color) {
                 color565toRGB(_write16BitColor_save_pixel, r1, g1, b1);
                 color565toRGB(color, r2, g2, b2);
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (b1 << 8) | r2;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (b1 << 8) | r2;
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
 
                 _write16BitColor_save_pixel = (uint32_t)-1;
             }
@@ -1952,25 +1949,25 @@ void NT35510_t4x_p::write16BitColor(uint16_t color) {
             uint8_t r, g, b;
             color565toRGB(color, r, g, b);
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(r);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(g);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(b);
         }
     } else {
         if (_bus_width == 16) {
             // we simply output the one word
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = color;
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
         } else {
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
         }
     }
 }
@@ -1981,10 +1978,10 @@ void NT35510_t4x_p::endWrite16BitColors() {
         uint8_t r1, g1, b1;
         color565toRGB(_write16BitColor_save_pixel, r1, g1, b1);
         waitWriteShiftStat(__LINE__);
-        p->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
         waitWriteShiftStat(__LINE__);
-        p->TIMSTAT |= _flexio_timer_mask;
-        p->SHIFTBUF[_write_shifter] = (b1 << 8);  // there is no R2...
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = (b1 << 8);  // there is no R2...
     }
     
     /*Wait for transfer to be completed */
@@ -1994,8 +1991,46 @@ void NT35510_t4x_p::endWrite16BitColors() {
 }
 
 //FASTRUN void NT35510_t4x_p::write16BitColor(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, const uint16_t *pcolors, uint16_t count) {
+FASTRUN void NT35510_t4x_p::updateScreenFlexIO() {
+    // lets force it to output the ADDR sections.
+    _previous_addr_x0 = 0xffff;
+    _previous_addr_y0 = 0xffff;
+
+
+    //Serial.println("\tCalled NT35510_t4x_p::updateScreenFlexIO");
+    if (/*(_bitDepth != 24) && */(_bus_width == 16)) {
+        _pflexio_imxrt->SHIFTERR = _write_shifter_mask | _read_shifter_mask; // clear out any previous state
+        FlexIO_Config_SnglBeat();
+        CSLow();
+        microSecondDelay();
+        output_command_helper(NT35510_RAMWR);
+        microSecondDelay();
+        CSHigh();    
+
+        //print_flexio_debug_data(_pFlex, _flexio_timer, _write_shifter, _read_shifter);
+        flex_config = CONFIG_CLEAR; // have it reset up
+        uint32_t length = _width * _height;
+        uint16_t *pfb = getFrameBuffer();
+        //Serial.printf("\tUsing begin write... end: %p %u\n", pfb, length);
+
+        CSLow();
+        setAddr(0, 0, _width - 1, _height - 1);
+
+        beginWrite16BitColors();
+        microSecondDelay();
+        while (length--) {
+            write16BitColor(*pfb++);
+        }
+        endWrite16BitColors();
+
+    } else {
+        writeRectFlexIO(0, 0, _width, _height, _pfbtft);
+    }
+}
+
+
 FASTRUN void NT35510_t4x_p::writeRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *pcolors) {
-    Serial.printf("NT35510_t4x_p::writeRectFlexIO(%d, %d, %d, %d, %p)\n", x, y, w, h, pcolors);
+    //Serial.printf("NT35510_t4x_p::writeRectFlexIO(%d, %d, %d, %d, %p)\n", x, y, w, h, pcolors);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
@@ -2016,9 +2051,9 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
 
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
+    CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
-    CSLow();
     if (_bitDepth == 24) {
         uint8_t r, g, b;
         color565toRGB(color, r, g, b);
@@ -2027,57 +2062,57 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
             while (length >= 2 ) {
                 length -= 2;
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (r << 8) | g;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (r << 8) | g;
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (b << 8) | r;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (b << 8) | r;
                 waitWriteShiftStat(__LINE__);
-                if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] = (g << 8) | b;
+                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (g << 8) | b;
             }
             if (length) {
                 // only 1 pixel left
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (r << 8) | g;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (r << 8) | g;
                 waitWriteShiftStat(__LINE__);
-                p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] = (b << 8);
+                _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (b << 8);
             }
 
         } else {
             while (length-- > 0) {
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(r);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(r);
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(g);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(g);
                 waitWriteShiftStat(__LINE__);
-                if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] = generate_output_word(b);
+                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(b);
             }
         }
     } else {
         while (length-- > 1) {
             waitWriteShiftStat(__LINE__);
             if (_bus_width == 16) {
-                p->SHIFTBUF[_write_shifter] = color; 
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = color; 
             } else {
-                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
             }
         }
     }
     /* Write the last pixel */
     waitWriteShiftStat(__LINE__);
     if (_bus_width == 16) {
-        p->TIMSTAT |= _flexio_timer_mask;
-        p->SHIFTBUF[_write_shifter] = color;
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
     } else {
-        p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
         waitWriteShiftStat(__LINE__);
-        p->TIMSTAT |= _flexio_timer_mask;
-        p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
     }
 
     /*Wait for transfer to be completed */
@@ -2095,9 +2130,9 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
 
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
+    CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
-    CSLow();
     if (_bitDepth == 24) {
         if (_bus_width == 16) {
             while (length >= 2 ) {
@@ -2106,33 +2141,33 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
                 uint32_t color2 = *pixels++;
 
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color2 >> 16) & 0xff); // B R2
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color2 >> 16) & 0xff); // B R2
                 waitWriteShiftStat(__LINE__);
-                if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] =  color2 & 0xffff; // G2 B2;
+                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] =  color2 & 0xffff; // G2 B2;
             }
             if (length) {
                 // only 1 pixel left
                 uint32_t color = *pixels++;
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
                 waitWriteShiftStat(__LINE__);
-                p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8);
+                _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8);
             }
 
         } else {
             while (length-- > 0) {
                 uint32_t color = *pixels++;
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
                 waitWriteShiftStat(__LINE__);
-                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
                 waitWriteShiftStat(__LINE__);
-                //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] = generate_output_word(color);
+                //if (length == 0)  _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color);
             }
         }
     } else {
@@ -2142,14 +2177,14 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
 
             waitWriteShiftStat(__LINE__);
             if (_bus_width == 16) {
-                if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] = color;
+                if (length == 0)  _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
             } else {
-                p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
                 waitWriteShiftStat(__LINE__);
-                if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-                p->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+                if (length == 0)  _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
             }
         }
     }
@@ -2179,37 +2214,37 @@ void NT35510_t4x_p::fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, ui
 
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
+    CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
-    CSLow();
     if (_bus_width == 16) {
         while (length >= 2 ) {
             length -= 2;
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color >> 16) & 0xff); // B R2
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color >> 16) & 0xff); // B R2
             waitWriteShiftStat(__LINE__);
-            if (length == 0) p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] =  color & 0xffff; // G2 B2;
+            if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] =  color & 0xffff; // G2 B2;
         }
         if (length) {
             // only 1 pixel left
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
             waitWriteShiftStat(__LINE__);
-            p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8);
+            _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8);
         }
     } else {
         while (length-- > 0) {
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 16);
             waitWriteShiftStat(__LINE__);
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
             waitWriteShiftStat(__LINE__);
-            //if (length == 0)  p->TIMSTAT |= _flexio_timer_mask;
-            p->SHIFTBUF[_write_shifter] = generate_output_word(color);
+            //if (length == 0)  _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color);
         }
     }
 
@@ -2256,8 +2291,8 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
 
     /* Write command index */
     DBGPrintf("\tOutput NT35510_RAMRD\n");
-    output_command_helper(NT35510_RAMRD);
     CSLow();
+    output_command_helper(NT35510_RAMRD);
     microSecondDelay();
     // delayMicroseconds(50);
 
@@ -2297,7 +2332,7 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
             uint8_t r, g, b;
             waitReadShiftStat(__LINE__);
             if (_bus_width == 16) {
-                uint16_t w = p->SHIFTBUF[_read_shifter] >> 16;
+                uint16_t w = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16;
                 r = w >> 8;
                 g = w;
                 waitReadShiftStat(__LINE__);
@@ -2382,7 +2417,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
     DCLow();
 
     /* Write command index */
-    p->SHIFTBUF[_write_shifter] = generate_output_word(cmd);
+    _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(cmd);
 
     /*Wait for transfer to be completed */
     waitTimStat(__LINE__);
@@ -2415,32 +2450,32 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
     DBGPrintf("START::_irq_bursts_to_complete: %d _irq_bytes_remaining: %d remainder:%u\n", _irq_bursts_to_complete, _irq_bytes_remaining, remainder);
   
     uint8_t beats = SHIFTNUM * _irq_bytes_per_shifter;
-    p->TIMCMP[_flexio_timer] = ((beats * 2U - 1) << 8) | (_baud_div / 2U - 1U);
+    _pflexio_imxrt->TIMCMP[_flexio_timer] = ((beats * 2U - 1) << 8) | (_baud_div / 2U - 1U);
 
-    p->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
+    _pflexio_imxrt->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
     
     asm("dsb");
     
     IRQcallback = this;
     // enable interrupts to trigger bursts
-    //print_flexio_debug_data(pFlex, _flexio_timer, _write_shifter, _read_shifter);
+    //print_flexio_debug_data(_pFlex, _flexio_timer, _write_shifter, _read_shifter);
 
 //    digitalToggleFast(2);
-    p->TIMIEN |= _flexio_timer_mask;
-    p->SHIFTSIEN |= (1 << SHIFTER_IRQ);
+    _pflexio_imxrt->TIMIEN |= _flexio_timer_mask;
+    _pflexio_imxrt->SHIFTSIEN |= (1 << SHIFTER_IRQ);
 }
 
 FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
     //digitalWriteFast(2, HIGH);
-    DBGPrintf("%x %x %u %u ", p->TIMSTAT, p->SHIFTSTAT, _irq_bursts_to_complete, _irq_bytes_remaining);
+    DBGPrintf("%x %x %u %u ", _pflexio_imxrt->TIMSTAT, _pflexio_imxrt->SHIFTSTAT, _irq_bursts_to_complete, _irq_bytes_remaining);
   
- if (p->TIMSTAT & _flexio_timer_mask) { // interrupt from end of burst
+ if (_pflexio_imxrt->TIMSTAT & _flexio_timer_mask) { // interrupt from end of burst
         DBGWrite('T');
-        p->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
+        _pflexio_imxrt->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
         _irq_bursts_to_complete--;
         //if (_irq_bytes_remaining < 32) Serial.printf("T:%u %u\n", _irq_bursts_to_complete, _irq_bytes_remaining);
         if ((_irq_bursts_to_complete == 0) || (_irq_bytes_remaining == 0)) {
-            p->TIMIEN &= ~_flexio_timer_mask; // disable timer interrupt
+            _pflexio_imxrt->TIMIEN &= ~_flexio_timer_mask; // disable timer interrupt
             asm("dsb");
             WR_AsyncTransferDone = true;
             microSecondDelay();
@@ -2452,26 +2487,26 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
         }
     }
 
-    if (p->SHIFTSTAT & (1 << SHIFTER_IRQ)) { // interrupt from empty shifter buffer
+    if (_pflexio_imxrt->SHIFTSTAT & (1 << SHIFTER_IRQ)) { // interrupt from empty shifter buffer
         DBGWrite('S');
         // note, the interrupt signal is cleared automatically when writing data to the shifter buffers
         if (_irq_bytes_remaining == 0) { // just started final burst, no data to load
-            p->SHIFTSIEN &= ~(1 << SHIFTER_IRQ); // disable shifter interrupt signal
+            _pflexio_imxrt->SHIFTSIEN &= ~(1 << SHIFTER_IRQ); // disable shifter interrupt signal
         } else if (_irq_bytes_remaining < _irq_bytes_per_burst) { // just started second-to-last burst, load data for final burst
-            p->TIMCMP[0] = ((_irq_bytes_remaining * 2U - 1) << 8) | (_baud_div / 2U - 1); // takes effect on final burst
+            _pflexio_imxrt->TIMCMP[0] = ((_irq_bytes_remaining * 2U - 1) << 8) | (_baud_div / 2U - 1); // takes effect on final burst
             _irq_readPtr = finalBurstBuffer;
             _irq_bytes_remaining = 0;
             if (_bus_width == 8) {
                 for (int i = SHIFTNUM - 1; i >= 0; i--) {
                     //digitalToggleFast(3);
                     uint32_t data = _irq_readPtr[i];
-                    p->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
+                    _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
                 }
             } else {
                 uint8_t *pb = (uint8_t*)_irq_readPtr;
                 for (int i = SHIFTNUM - 1; i >= 0; i--) {
                     //digitalToggleFast(3);
-                    p->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
+                    _pflexio_imxrt->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
                 }
             }
         } else {
@@ -2481,14 +2516,14 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
                 for (int i = SHIFTNUM - 1; i >= 0; i--) {
                     //digitalToggleFast(3);
                     uint32_t data = _irq_readPtr[i];
-                    p->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
+                    _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
                 }
                 _irq_readPtr += SHIFTNUM;
             } else {
                 uint8_t *pb = (uint8_t*)_irq_readPtr;
                 for (int i = SHIFTNUM - 1; i >= 0; i--) {
                     //digitalToggleFast(3);
-                    p->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
+                    _pflexio_imxrt->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
                 }
                 pb += (2 * SHIFTNUM);
                 _irq_readPtr = (uint32_t*)pb; 
@@ -2496,7 +2531,7 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
         }
         if (_irq_bytes_remaining == 0) {
             Serial.println("RM==0");
-            p->SHIFTSIEN &= ~(1 << SHIFTER_IRQ);
+            _pflexio_imxrt->SHIFTSIEN &= ~(1 << SHIFTER_IRQ);
         }
     }
     DBGWrite('\n');
