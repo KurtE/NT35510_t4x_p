@@ -203,9 +203,9 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     // Warning these APIS currently do not look for or 
     // use frame buffer. 
-    void drawPixel24BPP(int16_t x, int16_t y, uint32_t color);
-    void fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color);
-    bool writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint32_t *pixels);
+    void drawPixel24BPPFlexIO(int16_t x, int16_t y, uint32_t color);
+    void fillRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color);
+    bool writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, int16_t w_image, const uint32_t *pixels);
 
 
     /**************************************************************/

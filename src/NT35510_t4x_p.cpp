@@ -2121,7 +2121,7 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
     microSecondDelay();
 }
 
-bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint32_t *pixels) {
+bool NT35510_t4x_p::writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, int16_t w_image, const uint32_t *pixels) {
     uint32_t length = w * h;
     // bail if nothing to do
     if (length == 0) return false;
@@ -2133,24 +2133,34 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
     CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
+    const uint32_t *pixels_row = pixels;
     if (_bitDepth == 24) {
         if (_bus_width == 16) {
-            while (length >= 2 ) {
-                length -= 2;
-                uint32_t color = *pixels++;
-                uint32_t color2 = *pixels++;
-
-                waitWriteShiftStat(__LINE__);
-                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
-                waitWriteShiftStat(__LINE__);
-                _pflexio_imxrt->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color2 >> 16) & 0xff); // B R2
-                waitWriteShiftStat(__LINE__);
-                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
-                _pflexio_imxrt->SHIFTBUF[_write_shifter] =  color2 & 0xffff; // G2 B2;
+            uint32_t color;
+            uint8_t pixel_index = 0;  // used to help us know which pixel this is...
+            while (h--) {
+                pixels = pixels_row;
+                int16_t wrow = w;
+                while (wrow--) {
+                    pixel_index++;
+                    if (pixel_index & 1) {
+                        color = *pixels++;
+                    } else {
+                        // we have two pixels to work with...
+                        uint32_t color2 = *pixels++;
+                        waitWriteShiftStat(__LINE__);
+                        _pflexio_imxrt->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
+                        waitWriteShiftStat(__LINE__);
+                        _pflexio_imxrt->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8) | ((color2 >> 16) & 0xff); // B R2
+                        waitWriteShiftStat(__LINE__);
+                        if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                        _pflexio_imxrt->SHIFTBUF[_write_shifter] =  color2 & 0xffff; // G2 B2;
+                    }
+                }
+                pixels_row += w_image; // advance to the next row of pixels...
             }
-            if (length) {
+            if (pixel_index & 1) {
                 // only 1 pixel left
-                uint32_t color = *pixels++;
                 waitWriteShiftStat(__LINE__);
                 _pflexio_imxrt->SHIFTBUF[_write_shifter] = (color >> 8) && 0xffff;  // RG of first pixel
                 waitWriteShiftStat(__LINE__);
@@ -2197,7 +2207,7 @@ bool NT35510_t4x_p::writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, c
     return true;
 }
 
-void NT35510_t4x_p::fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color) {
+void NT35510_t4x_p::fillRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color) {
     uint32_t length = w * h;
     // bail if nothing to do
     if (length == 0) return ;
@@ -2255,10 +2265,10 @@ void NT35510_t4x_p::fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, ui
     microSecondDelay();
 }
 
-void NT35510_t4x_p::drawPixel24BPP(int16_t x, int16_t y, uint32_t color) {
-
-    writeRect24BPP(x, y, 1, 1, &color);
-}
+//void NT35510_t4x_p::drawPixel24BPPF(int16_t x, int16_t y, uint32_t color) {
+//
+//    writeRect24BPP(x, y, 1, 1, &color);
+//}
 
 
 
