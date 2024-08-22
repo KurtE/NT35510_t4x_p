@@ -347,6 +347,13 @@ void drawTestScreen() {
     tft.fillRect24BPP(500+BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0xff, 0));
     tft.fillRect24BPP(500+ 2 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0, 0xff));
     tft.fillRect24BPP(500+ 3 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0xff));
+    
+    uint32_t *pixel32_data = (uint32_t *)pixel_data;
+    for (uint16_t i = 0; i < BAND_WIDTH*BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0xff, 0xff, 0);
+    tft.writeRect24BPP(500+ 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
+    for (uint16_t i = 0; i < BAND_WIDTH*BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0x40, 0x40, 0x40);
+    tft.writeRect24BPP(500+ 5 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
+
 
 
     // Lets see the colors at the 4 corners:
