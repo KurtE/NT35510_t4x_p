@@ -35,8 +35,8 @@
 #define CENTER NT35510_t4x_p::CENTER
 
 // maybe a few GFX FOnts?
-#include <Fonts/FreeMono9pt7b.h>
-#include <Fonts/FreeSerif9pt7b.h>
+#include <Fonts/FreeMono12pt7b.h>
+#include <Fonts/FreeSerif12pt7b.h>
 
 typedef struct {
     const ILI948x_t4_mm_font_t *ili_font;
@@ -50,18 +50,18 @@ typedef struct {
 const ili_fonts_test_t font_test_list[] = {
     { nullptr, nullptr, "SystemFont", NT35510_WHITE, NT35510_WHITE },
     { nullptr, nullptr, "SystemFont", NT35510_RED, NT35510_YELLOW },
-    { &Arial_12, nullptr, "Arial_12", NT35510_WHITE, NT35510_WHITE },
-    { &Arial_12_Bold, nullptr, "ArialBold 12", NT35510_YELLOW, NT35510_YELLOW },
-    { &ComicSansMS_12, nullptr, "ComicSansMS 12", NT35510_GREEN, NT35510_GREEN },
-    { &DroidSans_12, nullptr, "DroidSans_12", NT35510_WHITE, NT35510_WHITE },
-    { &Michroma_12, nullptr, "Michroma_12", NT35510_YELLOW, NT35510_YELLOW },
-    { &Crystal_16_Italic, nullptr, "CRYSTAL_16", NT35510_BLACK, NT35510_YELLOW },
-    { &Chancery_16_Italic, nullptr, "Chancery_16_Italic", NT35510_GREEN, NT35510_GREEN },
-    { &OpenSans16, nullptr, "OpenSans 16", NT35510_RED, NT35510_YELLOW },
-    { nullptr, &FreeMono9pt7b, "GFX FreeMono9pt7b", NT35510_WHITE, NT35510_WHITE },
-    { nullptr, &FreeMono9pt7b, "GFX FreeMono9pt7b", NT35510_RED, NT35510_YELLOW },
-    { nullptr, &FreeSerif9pt7b, "GFX FreeSerif9pt7b", NT35510_WHITE, NT35510_WHITE },
-    { nullptr, &FreeSerif9pt7b, "GFX FreeSerif9pt7b", NT35510_RED, NT35510_YELLOW },
+    { &Arial_16, nullptr, "Arial_16", NT35510_WHITE, NT35510_WHITE },
+    { &Arial_16_Bold, nullptr, "ArialBold 16", NT35510_YELLOW, NT35510_YELLOW },
+    { &ComicSansMS_16, nullptr, "ComicSansMS 16", NT35510_GREEN, NT35510_GREEN },
+    { &DroidSans_18, nullptr, "DroidSans_18", NT35510_WHITE, NT35510_WHITE },
+    { &Michroma_14, nullptr, "Michroma_14", NT35510_YELLOW, NT35510_YELLOW },
+    { &Crystal_24_Italic, nullptr, "CRYSTAL_24", NT35510_BLACK, NT35510_YELLOW },
+    { &Chancery_20_Italic, nullptr, "Chancery_20_Italic", NT35510_GREEN, NT35510_GREEN },
+    { &OpenSans20, nullptr, "OpenSans 20", NT35510_RED, NT35510_YELLOW },
+    { nullptr, &FreeMono12pt7b, "GFX FreeMono12pt7b", NT35510_WHITE, NT35510_WHITE },
+    { nullptr, &FreeMono12pt7b, "GFX FreeMono12pt7b", NT35510_RED, NT35510_YELLOW },
+    { nullptr, &FreeSerif12pt7b, "GFX FreeSerif12pt7b", NT35510_WHITE, NT35510_WHITE },
+    { nullptr, &FreeSerif12pt7b, "GFX FreeSerif12pt7b", NT35510_RED, NT35510_YELLOW },
 
 };
 
@@ -120,13 +120,13 @@ void setup() {
     nextPage();
 
     tft.setTextColor(NT35510_YELLOW);
-    tft.setFont(Michroma_12);
-    tft.println("Michroma_12");
+    tft.setFont(Michroma_24);
+    tft.println("Michroma_24");
     displayStuff();
 
     tft.setTextColor(NT35510_BLACK, NT35510_YELLOW);
-    tft.setFont(Crystal_16_Italic);
-    tft.println("CRYSTAL_16");
+    tft.setFont(Crystal_24_Italic);
+    tft.println("CRYSTAL_24");
     displayStuff();
 
     nextPage();
@@ -139,15 +139,16 @@ void setup() {
     //anti-alias font OpenSans
     tft.setTextColor(NT35510_RED, NT35510_YELLOW);
     tft.setFont(OpenSans16);
-    tft.println("OpenSans 18");
+    tft.println("OpenSans 16");
     displayStuff();
+    nextPage();
 
     Serial.println("Basic Font Display Complete");
     Serial.println("Loop test for alt colors + font");
 }
 
 void loop() {
-    tft.setFont(Arial_12);
+    tft.setFont(Arial_18);
     Serial.printf("\nRotation: %d\n", test_screen_rotation);
     tft.setRotation(test_screen_rotation);
     tft.fillScreen(NT35510_RED);
