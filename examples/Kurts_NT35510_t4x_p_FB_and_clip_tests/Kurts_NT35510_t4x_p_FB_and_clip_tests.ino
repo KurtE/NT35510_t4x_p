@@ -20,6 +20,8 @@
 #define NT35510X_SPEED_MHZ 30
 
 
+#define FRAME_BUFFER_PIXEL_SIZE 4 // 2 or 4 for allocations...
+
 #include <MemoryHexDump.h>
 
 #include <NT35510_t4x_p.h>
@@ -100,17 +102,17 @@ void setup() {
 //tft.setFlexIOPins(7, 8);
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
     Serial.print("DEVBRD5 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
     Serial.print("Teensy4.1 - ");
     Serial.printf("EXTMEM size: %u ", external_psram_size);
 
-    tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
 #ifdef ARDUINO_TEENSY41
@@ -120,14 +122,18 @@ void setup() {
 
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
-    tft.setBitDepth(16);
+    tft.setBitDepth(24);
 
     tft.displayInfo();
 
     // Frame buffer will not fit work with malloc see if
     if (tft_frame_buffer) {
-        Serial.printf("&&& Set FrameBuffer: %p\n", tft_frame_buffer);
+        Serial.printf("&&& Set FrameBuffer(%d): %p\n", FRAME_BUFFER_PIXEL_SIZE, tft_frame_buffer);
+        #if FRAME_BUFFER_PIXEL_SIZE == 4
+        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))), 24);
+        #else
         tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))));
+        #endif
     }
     tft.setRotation(ROTATION);
     tft.fillScreen(NT35510_BLACK);
@@ -247,8 +253,8 @@ void drawTestScreen() {
 
     tft.drawRect(0, 150, 100, 50, NT35510_WHITE);
     tft.drawLine(0, 150, 100, 50, NT35510_GREEN);
-    tft.fillRectVGradient(125, 150, 50, 50, NT35510_GREEN, NT35510_YELLOW);
-    tft.fillRectHGradient(200, 150, 50, 50, NT35510_YELLOW, NT35510_GREEN);
+    tft.fillRectVGradient(175, 150, 100, 100, NT35510_GREEN, NT35510_YELLOW);
+    tft.fillRectHGradient(300, 150, 100, 100, NT35510_YELLOW, NT35510_GREEN);
 
 // Try a read rect and write rect
 #define BAND_WIDTH 30
@@ -325,10 +331,10 @@ void drawTestScreen() {
     //button.drawButton();
     // Lets fill up some more of the larger screen.
 
-    tft.fillCircle(380, 220, 80, NT35510_GREEN);
-    tft.fillCircle(380, 220, 60, NT35510_BLUE);
-    tft.drawCircle(380, 220, 40, NT35510_PINK);
-    tft.drawCircle(380, 220, 20, NT35510_YELLOW);
+    tft.fillCircle(500, 220, 80, NT35510_GREEN);
+    tft.fillCircle(500, 220, 60, NT35510_BLUE);
+    tft.drawCircle(500, 220, 40, NT35510_PINK);
+    tft.drawCircle(500, 220, 20, NT35510_YELLOW);
 
     tft.fillTriangle(20, 300, 170, 300, 95, 240, NT35510_GREEN);
     tft.fillTriangle(40, 280, 150, 280, 95, 220, NT35510_PINK);

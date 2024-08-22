@@ -1996,7 +1996,12 @@ FASTRUN void NT35510_t4x_p::updateScreenFlexIO() {
     _previous_addr_x0 = 0xffff;
     _previous_addr_y0 = 0xffff;
 
+    if (_tpfb->busWidth() == 24) {
+        writeRect24BPPFlexIO(0, 0, _width, _height, _width, (uint32_t*)_pfbtft);
+        return;
+    }
 
+ 
     //Serial.println("\tCalled NT35510_t4x_p::updateScreenFlexIO");
     if (/*(_bitDepth != 24) && */(_bus_width == 16)) {
         _pflexio_imxrt->SHIFTERR = _write_shifter_mask | _read_shifter_mask; // clear out any previous state
@@ -2024,7 +2029,7 @@ FASTRUN void NT35510_t4x_p::updateScreenFlexIO() {
         endWrite16BitColors();
 
     } else {
-        writeRectFlexIO(0, 0, _width, _height, _pfbtft);
+       writeRectFlexIO(0, 0, _width, _height, _pfbtft);
     }
 }
 
@@ -2136,7 +2141,7 @@ bool NT35510_t4x_p::writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_
     const uint32_t *pixels_row = pixels;
     if (_bitDepth == 24) {
         if (_bus_width == 16) {
-            uint32_t color;
+            uint32_t color = 0;
             uint8_t pixel_index = 0;  // used to help us know which pixel this is...
             while (h--) {
                 pixels = pixels_row;
