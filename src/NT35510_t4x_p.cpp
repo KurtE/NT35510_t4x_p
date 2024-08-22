@@ -2126,7 +2126,7 @@ bool NT35510_t4x_p::writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_
     // bail if nothing to do
     if (length == 0) return false;
     setAddr(x, y, x + w - 1, y + h -1);
-    //Serial.printf("writeRect24BPP(%d, %d, %d, %d, %p): %u\n", x, y, w, h, pixels, length, _bitDepth);
+    Serial.printf("writeRect24BPP(%d, %d, %d, %d, %d, %p): %u\n", x, y, w, h, w_image, pixels, length, _bitDepth);
 
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */

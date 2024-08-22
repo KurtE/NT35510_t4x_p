@@ -343,6 +343,12 @@ void drawTestScreen() {
     tft.setTextColor(NT35510_WHITE, NT35510_GREEN);
     tft.println("MonoBold");
 
+    tft.fillRect24BPP(500, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0));
+    tft.fillRect24BPP(500+BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0xff, 0));
+    tft.fillRect24BPP(500+ 2 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0, 0xff));
+    tft.fillRect24BPP(500+ 3 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0xff));
+
+
     // Lets see the colors at the 4 corners:
     Serial.printf("UL:%x UR:%x, LL:%x, LR:%x\n", tft.readPixel(0, 0), tft.readPixel(tft.width() - 1, 0),
                   tft.readPixel(tft.height() - 1, 0), tft.readPixel(tft.width() - 1, tft.height() - 1));
