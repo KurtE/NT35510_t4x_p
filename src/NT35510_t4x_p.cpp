@@ -2647,10 +2647,15 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
 
             if (_bitDepth == 24) {
                 if (_bus_width == 8) {
+                    Serial.print(".");
+                    for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                        //digitalToggleFast(3);
+                        uint32_t data = _irq_readPtr[i];
+                        _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
+                    }
+                    _irq_readPtr += SHIFTNUM;
 
                 } else if (_bus_width == 16) {
-
-                } else {  // 10 bit... 
 
                 }
             } else {

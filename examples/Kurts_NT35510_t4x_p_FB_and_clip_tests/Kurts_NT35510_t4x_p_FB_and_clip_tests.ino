@@ -17,7 +17,7 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 28
+#define NT35510X_SPEED_MHZ 24
 
 
 #define FRAME_BUFFER_PIXEL_SIZE 4  // 2 or 4 for allocations...
@@ -56,13 +56,16 @@ uint8_t *tft_frame_buffer = nullptr;
 #ifdef ARDUINO_TEENSY41
 extern "C" {
     extern uint8_t external_psram_size;
+    extern void set_psram_clock(int speed_mhz);
 }
 
 NT35510_t4x_p tft = NT35510_t4x_p(10, 8, 9);  //(dc, cs, rst)
 #elif ARDUINO_TEENSY40
 NT35510_t4x_p tft = NT35510_t4x_p(0, 1, 2);  //(dc, cs, rst)
-#elif defined(ARDUINO_TEENSY_DEVBRD4) || defined(ARDUINO_TEENSY_DEVBRD5)
+#elif defined(ARDUINO_TEENSY_DEVBRD4)
 NT35510_t4x_p tft = NT35510_t4x_p(10, 11, 12);  //(dc, cs, rst)
+#elif defined(ARDUINO_TEENSY_DEVBRD5)
+NT35510_t4x_p tft = NT35510_t4x_p(55, 53, 54);  //(dc, cs, rst)
 #else
 NT35510_t4x_p tft = NT35510_t4x_p(4, 5, 3);  //(dc, cs, rst)
 #endif
@@ -113,15 +116,18 @@ void setup() {
     Serial.printf("EXTMEM size: %u ", external_psram_size);
 
     // Try to bump up PSRAM Speed:
-    update_psram_speed(130);  
+    //update_psram_speed(130);
+    set_psram_clock(32);
 
 
     tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
 #ifdef ARDUINO_TEENSY41
-
-    tft.setBusWidth(16);
+    pinMode(24, INPUT_PULLDOWN);
+    delay(10); // plenty of time
+    // if the user tied this pin to 3.3v then try 16 bit bus...
+    if (digitalRead(24)) tft.setBusWidth(16);
 #endif
 
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
@@ -172,7 +178,7 @@ void setup() {
     drawTestScreen();
 }
 
-#ifdef ARDUINO_TEENSY41
+#if 0  // def ARDUINO_TEENSY41 - have version in our variant stuff
 void update_psram_speed(int speed_mhz) {
     // What clocks exist:
     static const int flexspio2_clock_speeds[] = { 396, 720, 665, 528 };
@@ -400,7 +406,11 @@ void drawTestScreen() {
     uint32_t *pixel32_data = (uint32_t *)pixel_data;
     for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0xff, 0xff, 0);
     tft.writeRect24BPP(500 + 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
-#if 0
+    memset(pixel_data, 0, BAND_WIDTH * BAND_HEIGHT * 2);    
+    tft.readRect(500 + 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel_data);
+    MemoryHexDump(Serial,pixel_data, BAND_WIDTH * BAND_HEIGHT * 2, true, "\nread back\n");
+
+#if 1
     for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0x40, 0x40, 0x40);
     tft.writeRect24BPP(500 + 5 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
 #endif
@@ -410,7 +420,10 @@ void drawTestScreen() {
     Serial.printf("UL:%x UR:%x, LL:%x, LR:%x\n", tft.readPixel(0, 0), tft.readPixel(tft.width() - 1, 0),
                   tft.readPixel(tft.height() - 1, 0), tft.readPixel(tft.width() - 1, tft.height() - 1));
 
-    if (use_fb) MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
+    //if (use_fb) {
+    //    arm_dcache_flush(tft.getFrameBuffer(), tft.width() * tft.height() * 3);
+    //    MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
+    //}
     if (use_dma) {
         Serial.println("$$$ Using UpdateScreenAsync");
         tft.updateScreenAsync();
