@@ -17,10 +17,10 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 30
+#define NT35510X_SPEED_MHZ 28
 
 
-#define FRAME_BUFFER_PIXEL_SIZE 4 // 2 or 4 for allocations...
+#define FRAME_BUFFER_PIXEL_SIZE 4  // 2 or 4 for allocations...
 
 #include <MemoryHexDump.h>
 
@@ -112,6 +112,10 @@ void setup() {
     Serial.print("Teensy4.1 - ");
     Serial.printf("EXTMEM size: %u ", external_psram_size);
 
+    // Try to bump up PSRAM Speed:
+    update_psram_speed(130);  
+
+
     tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
@@ -129,11 +133,11 @@ void setup() {
     // Frame buffer will not fit work with malloc see if
     if (tft_frame_buffer) {
         Serial.printf("&&& Set FrameBuffer(%d): %p\n", FRAME_BUFFER_PIXEL_SIZE, tft_frame_buffer);
-        #if FRAME_BUFFER_PIXEL_SIZE == 4
+#if FRAME_BUFFER_PIXEL_SIZE == 4
         tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))), 24);
-        #else
+#else
         tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))));
-        #endif
+#endif
     }
     tft.setRotation(ROTATION);
     tft.fillScreen(NT35510_BLACK);
@@ -145,7 +149,8 @@ void setup() {
     tft.fillScreen(NT35510_GREEN);
     delay(500);
     tft.fillScreen(NT35510_BLUE);
-
+    delay(500);
+    tft.fillScreenHGradient(NT35510_BLACK, NT35510_GREEN);
     if (tft_frame_buffer) {
         delay(500);
         if (!tft.useFrameBuffer(true)) Serial.println("Use Frame buffer failed");
@@ -154,9 +159,11 @@ void setup() {
         delay(500);
         tft.fillScreen(NT35510_PINK);
         tft.updateScreen();
-        delay(500);
+        WaitForUserInput();
+        //delay(500);
+        tft.fillScreenVGradient(NT35510_BLACK, NT35510_LIGHTGREY);
+        tft.updateScreen();
     }
-
     WaitForUserInput();
     //
     //  button.initButton(&tft, 200, 125, 100, 40, NT35510_GREEN, NT35510_YELLOW, NT35510_RED, "UP", 1, 1);
@@ -164,6 +171,41 @@ void setup() {
 
     drawTestScreen();
 }
+
+#ifdef ARDUINO_TEENSY41
+void update_psram_speed(int speed_mhz) {
+    // What clocks exist:
+    static const int flexspio2_clock_speeds[] = { 396, 720, 665, 528 };
+
+    // See what the closest setting might be:
+    uint8_t clk_save, divider_save;
+    int min_delta = speed_mhz;
+    for (uint8_t clk = 0; clk < 4; clk++) {
+        uint8_t divider = (flexspio2_clock_speeds[clk] + (speed_mhz / 2)) / speed_mhz;
+        int delta = abs(speed_mhz - flexspio2_clock_speeds[clk] / divider);
+        if ((delta < min_delta) && (divider < 8)) {
+            min_delta = delta;
+            clk_save = clk;
+            divider_save = divider;
+        }
+    }
+
+    // first turn off FLEXSPI2
+    CCM_CCGR7 &= ~CCM_CCGR7_FLEXSPI2(CCM_CCGR_ON);
+
+    divider_save--; // 0 biased.
+    Serial.printf("Update FLEXSPI2 speed: %u clk:%u div:%u Actual:%u\n", speed_mhz, clk_save, divider_save,
+        flexspio2_clock_speeds[clk_save]/ (divider_save + 1));
+
+    // Set the clock settings.
+    CCM_CBCMR = (CCM_CBCMR & ~(CCM_CBCMR_FLEXSPI2_PODF_MASK | CCM_CBCMR_FLEXSPI2_CLK_SEL_MASK))
+                | CCM_CBCMR_FLEXSPI2_PODF(divider_save) | CCM_CBCMR_FLEXSPI2_CLK_SEL(clk_save);  // 120?
+
+    // Turn FlexSPI2 clock back on
+    CCM_CCGR7 |= CCM_CCGR7_FLEXSPI2(CCM_CCGR_ON);
+}
+#endif
+
 
 void frame_complete_callback() {
     Serial.println("\n*** Frame Complete Callback ***");
@@ -236,6 +278,7 @@ void drawTestScreen() {
     uint32_t start_time = millis();
     tft.fillScreen(use_fb ? (use_dma ? NT35510_BLUE : NT35510_RED) : NT35510_BLACK);
     //tft.setFont(Inconsolata_60);
+    MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nAfter FillScreen\n");
     tft.setFont(Arial_24_Bold);
     tft.setTextColor(NT35510_WHITE);
     tft.setCursor(0, 0);
@@ -260,7 +303,7 @@ void drawTestScreen() {
 #define BAND_WIDTH 30
 #define BAND_HEIGHT 50
 #define BAND_START_X 200
-#define BAND_START_Y 300
+#define BAND_START_Y 325
 
     tft.fillRect(BAND_START_X + BAND_WIDTH * 0, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, NT35510_RED);
     tft.fillRect(BAND_START_X + BAND_WIDTH * 1, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, NT35510_GREEN);
@@ -350,22 +393,24 @@ void drawTestScreen() {
     tft.println("MonoBold");
 
     tft.fillRect24BPP(500, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0));
-    tft.fillRect24BPP(500+BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0xff, 0));
-    tft.fillRect24BPP(500+ 2 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0, 0xff));
-    tft.fillRect24BPP(500+ 3 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0xff));
-    
-    uint32_t *pixel32_data = (uint32_t *)pixel_data;
-    for (uint16_t i = 0; i < BAND_WIDTH*BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0xff, 0xff, 0);
-    tft.writeRect24BPP(500+ 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
-    for (uint16_t i = 0; i < BAND_WIDTH*BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0x40, 0x40, 0x40);
-    tft.writeRect24BPP(500+ 5 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
+    tft.fillRect24BPP(500 + BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0xff, 0));
+    tft.fillRect24BPP(500 + 2 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0, 0xff));
+    tft.fillRect24BPP(500 + 3 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0xff));
 
+    uint32_t *pixel32_data = (uint32_t *)pixel_data;
+    for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0xff, 0xff, 0);
+    tft.writeRect24BPP(500 + 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
+#if 0
+    for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0x40, 0x40, 0x40);
+    tft.writeRect24BPP(500 + 5 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
+#endif
 
 
     // Lets see the colors at the 4 corners:
     Serial.printf("UL:%x UR:%x, LL:%x, LR:%x\n", tft.readPixel(0, 0), tft.readPixel(tft.width() - 1, 0),
                   tft.readPixel(tft.height() - 1, 0), tft.readPixel(tft.width() - 1, tft.height() - 1));
 
+    if (use_fb) MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
     if (use_dma) {
         Serial.println("$$$ Using UpdateScreenAsync");
         tft.updateScreenAsync();

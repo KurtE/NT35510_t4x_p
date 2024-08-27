@@ -1920,7 +1920,7 @@ void NT35510_t4x_p::beginWrite16BitColors() {
     CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
-    _write16BitColor_save_pixel = (uint32_t)-1;
+    _write16BitColor_save_pixel = (uint32_t)0x11223344;
 }
 
 void NT35510_t4x_p::write16BitColor(uint16_t color) {
@@ -1928,7 +1928,7 @@ void NT35510_t4x_p::write16BitColor(uint16_t color) {
         if (_bus_width == 16) {
             // again more complex as we combine 2 pixels
             // into 3 writes...
-            if (_write16BitColor_save_pixel == (uint32_t)-1) {
+            if (_write16BitColor_save_pixel == (uint32_t)0x11223344) {
                 _write16BitColor_save_pixel = color; // save it away
             } else {
                 uint8_t r1, g1, b1;
@@ -1942,7 +1942,7 @@ void NT35510_t4x_p::write16BitColor(uint16_t color) {
                 waitWriteShiftStat(__LINE__);
                 _pflexio_imxrt->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
 
-                _write16BitColor_save_pixel = (uint32_t)-1;
+                _write16BitColor_save_pixel = (uint32_t)0x11223344;
             }
 
         } else {
@@ -1972,6 +1972,58 @@ void NT35510_t4x_p::write16BitColor(uint16_t color) {
     }
 }
 
+void NT35510_t4x_p::write24BitColor(uint32_t color) {
+    if (_bitDepth == 24) {
+        if (_bus_width == 16) {
+            // again more complex as we combine 2 pixels
+            // into 3 writes...
+            // -1 may be valid... so lets choose 
+            if (_write16BitColor_save_pixel == (uint32_t)0x11223344) {
+                _write16BitColor_save_pixel = color; // save it away
+            } else {
+                uint8_t r1, g1, b1;
+                uint8_t r2, g2, b2;
+                color888toRGB(_write16BitColor_save_pixel, r1, g1, b1);
+                color888toRGB(color, r2, g2, b2);
+                waitWriteShiftStat(__LINE__);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (r1 << 8) | g1;
+                waitWriteShiftStat(__LINE__);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (b1 << 8) | r2;
+                waitWriteShiftStat(__LINE__);
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = (g2 << 8) | b2;
+
+                _write16BitColor_save_pixel = (uint32_t)0x11223344;
+            }
+
+        } else {
+            uint8_t r, g, b;
+            color888toRGB(color, r, g, b);
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(r);
+
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(g);
+
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(b);
+        }
+    } else {
+        color = color888To565(color); 
+        if (_bus_width == 16) {
+            // we simply output the one word
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
+        } else {
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+        }
+    }
+}
+
+
 void NT35510_t4x_p::endWrite16BitColors() {
     // 24 bit color on 16 bit bus is a little more complex...
     if ((_bitDepth == 24) && (_bus_width == 16) && (_write16BitColor_save_pixel != (uint32_t)-1)) {
@@ -1996,8 +2048,9 @@ FASTRUN void NT35510_t4x_p::updateScreenFlexIO() {
     _previous_addr_x0 = 0xffff;
     _previous_addr_y0 = 0xffff;
 
-    if (_tpfb->busWidth() == 24) {
-        writeRect24BPPFlexIO(0, 0, _width, _height, _width, (uint32_t*)_pfbtft);
+    if (_tpfb->dataWidth() == 24) {
+        //writeRect24BPPFlexIO(0, 0, _width, _height, _width, (uint32_t*)_pfbtft);
+        updateScreen24BPPFlexIO();
         return;
     }
 
@@ -2031,6 +2084,67 @@ FASTRUN void NT35510_t4x_p::updateScreenFlexIO() {
     } else {
        writeRectFlexIO(0, 0, _width, _height, _pfbtft);
     }
+}
+
+// BUGBUG knows about the 24 bit sutff...
+void NT35510_t4x_p::updateScreen24BPPFlexIO() {
+   uint32_t length = _width * _height;
+    // bail if nothing to do
+    setAddr(0, 0, _width - 1, _height -1);
+    Serial.printf("updateScreen24BPPFlexIO()\n");
+    FlexIO_Config_SnglBeat();
+    /* Assert CS, RS pins */
+    CSLow();
+    output_command_helper(NT35510_RAMWR);
+    microSecondDelay();
+    Serial.printf("\t Bit Depth: %u Bus width:%u\n", _bitDepth, _bus_width);
+    if (_bitDepth == 24) {
+        if (_bus_width == 16) {
+            // Try real hack... See if the bytes are in the right order to simply grab them in order...
+            uint16_t *pfb = _pfbtft;
+            length = (length * 3 + 1) / 2;  // rounded up
+
+            while (length--) {
+                waitWriteShiftStat(__LINE__);
+                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+//                _pflexio_imxrt->SHIFTBUF[_write_shifter] = *pfb++;
+                _pflexio_imxrt->SHIFTBUFBYS[_write_shifter] = *pfb++ << 16;
+            }
+        } else {
+            uint8_t *pfb = (uint8_t*)_pfbtft;
+            length = length * 3;
+            while (length-- > 0) {
+                waitWriteShiftStat(__LINE__);
+                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = *pfb++;
+            }
+        }
+    } else {
+#if 0
+        while (length-- > 0) {
+            uint32_t pixel = *pixels++;
+            uint16_t color = color565(pixel >> 16, pixel >> 8, pixel);
+
+            waitWriteShiftStat(__LINE__);
+            if (_bus_width == 16) {
+                if (length == 0)  _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
+            } else {
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
+
+                waitWriteShiftStat(__LINE__);
+                if (length == 0)  _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
+            }
+        }
+#endif
+    }
+    CSHigh();
+    /* Write the last pixel */
+    /*Wait for transfer to be completed */
+    waitTimStat(__LINE__);
+    microSecondDelay();
+    //Serial.println("\twriteRect24BPP - exit\n");
 }
 
 
@@ -2131,13 +2245,14 @@ bool NT35510_t4x_p::writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_
     // bail if nothing to do
     if (length == 0) return false;
     setAddr(x, y, x + w - 1, y + h -1);
-    Serial.printf("writeRect24BPP(%d, %d, %d, %d, %d, %p): %u\n", x, y, w, h, w_image, pixels, length, _bitDepth);
+    Serial.printf("writeRect24BPP(%d, %d, %d, %d, %d, %p): %u %u\n", x, y, w, h, w_image, pixels, length, _bitDepth);
 
     FlexIO_Config_SnglBeat();
     /* Assert CS, RS pins */
     CSLow();
     output_command_helper(NT35510_RAMWR);
     microSecondDelay();
+    Serial.printf("\t Bit Depth: %u Bus width:%u\n", _bitDepth, _bus_width);
     const uint32_t *pixels_row = pixels;
     if (_bitDepth == 24) {
         if (_bus_width == 16) {
@@ -2211,6 +2326,8 @@ bool NT35510_t4x_p::writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_
     //Serial.println("\twriteRect24BPP - exit\n");
     return true;
 }
+
+
 
 void NT35510_t4x_p::fillRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color) {
     uint32_t length = w * h;
@@ -2526,22 +2643,34 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
             }
         } else {
             _irq_bytes_remaining -= _irq_bytes_per_burst;
-            // try filling in reverse order
-            if (_bus_width == 8) {
-                for (int i = SHIFTNUM - 1; i >= 0; i--) {
-                    //digitalToggleFast(3);
-                    uint32_t data = _irq_readPtr[i];
-                    _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
+            // BUGBUG... how many combos of bitdepth of display and fb should we handle...
+
+            if (_bitDepth == 24) {
+                if (_bus_width == 8) {
+
+                } else if (_bus_width == 16) {
+
+                } else {  // 10 bit... 
+
                 }
-                _irq_readPtr += SHIFTNUM;
             } else {
-                uint8_t *pb = (uint8_t*)_irq_readPtr;
-                for (int i = SHIFTNUM - 1; i >= 0; i--) {
-                    //digitalToggleFast(3);
-                    _pflexio_imxrt->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
+                // try filling in reverse order
+                if (_bus_width == 8) {
+                    for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                        //digitalToggleFast(3);
+                        uint32_t data = _irq_readPtr[i];
+                        _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
+                    }
+                    _irq_readPtr += SHIFTNUM;
+                } else {
+                    uint8_t *pb = (uint8_t*)_irq_readPtr;
+                    for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                        //digitalToggleFast(3);
+                        _pflexio_imxrt->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
+                    }
+                    pb += (2 * SHIFTNUM);
+                    _irq_readPtr = (uint32_t*)pb; 
                 }
-                pb += (2 * SHIFTNUM);
-                _irq_readPtr = (uint32_t*)pb; 
             }
         }
         if (_irq_bytes_remaining == 0) {

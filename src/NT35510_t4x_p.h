@@ -206,6 +206,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     void drawPixel24BPPFlexIO(int16_t x, int16_t y, uint32_t color);
     void fillRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color);
     bool writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, int16_t w_image, const uint32_t *pixels);
+    void updateScreen24BPPFlexIO(); // update screen when 24 bit buffer
 
 
     /**************************************************************/
@@ -299,6 +300,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     void beginWrite16BitColors();
     void write16BitColor(uint16_t color);
+    void write24BitColor(uint32_t color32);
+    
     void endWrite16BitColors();
 //    void write16BitColor(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, const uint16_t *pcolors, uint16_t count);
     void updateScreenFlexIO();
@@ -320,7 +323,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     uint8_t _baud_div = 20;
 
-    uint8_t _bitDepth = 16;
+    // Moved to GFX class
+//    uint8_t _bitDepth = 16;
     uint8_t _rotation = 0;
     uint8_t MADCTL[5];
 
