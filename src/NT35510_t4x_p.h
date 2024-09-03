@@ -10,9 +10,7 @@
 
 #include "Teensy_Parallel_GFX.h"
 
-#define SHIFTNUM 4            // number of shifters used (must be 1, 2, 4, or 8)
-#define SHIFTER_DMA_REQUEST (_write_shifter + SHIFTNUM - 1) // only 0, 1, 2, 3 expected to work
-#define SHIFTER_IRQ (_write_shifter + SHIFTNUM - 1)
+#define NT35510_MAX_SHIFTNUM 4            // number of shifters used (must be 1, 2, 4, or 8)
 
 #define FLEXIO_ISR_PRIORITY 64 // interrupt is timing sensitive, so use relatively high priority (supersedes USB)
 
@@ -319,7 +317,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     IMXRT_FLEXIO_t *_pflexio_imxrt;
     const FlexIOHandler::FLEXIO_Hardware_t *hw;
     static DMAChannel flexDma;
-    static DMASetting _dmaSettings[2];
+    static DMASetting _dmaSettings[9];
 
     uint8_t _baud_div = 20;
 
@@ -406,7 +404,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     volatile uint32_t *_irq_readPtr;
     uint8_t  _irq_bytes_per_shifter;
     uint16_t _irq_bytes_per_burst;
-    uint32_t finalBurstBuffer[SHIFTNUM];
+    uint32_t finalBurstBuffer[NT35510_MAX_SHIFTNUM];
+    uint8_t _cnt_flexio_shifters = NT35510_MAX_SHIFTNUM; // defaults to 4... maybe...
 
 };
 #endif //__cplusplus

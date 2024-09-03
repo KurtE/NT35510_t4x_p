@@ -17,10 +17,10 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 24
+#define NT35510X_SPEED_MHZ 30
 
 
-#define FRAME_BUFFER_PIXEL_SIZE 4  // 2 or 4 for allocations...
+#define FRAME_BUFFER_PIXEL_SIZE 3  // 2 or 4 for allocations...
 
 #include <MemoryHexDump.h>
 
@@ -65,6 +65,8 @@ NT35510_t4x_p tft = NT35510_t4x_p(0, 1, 2);  //(dc, cs, rst)
 #elif defined(ARDUINO_TEENSY_DEVBRD4)
 NT35510_t4x_p tft = NT35510_t4x_p(10, 11, 12);  //(dc, cs, rst)
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
+#undef ROTATION
+#define ROTATION 3
 NT35510_t4x_p tft = NT35510_t4x_p(55, 53, 54);  //(dc, cs, rst)
 #else
 NT35510_t4x_p tft = NT35510_t4x_p(4, 5, 3);  //(dc, cs, rst)
@@ -105,10 +107,11 @@ void setup() {
 //tft.setFlexIOPins(7, 8);
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
     Serial.print("DEVBRD5 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
+    Serial.printf("FB Alloc:%p ", tft_frame_buffer);
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
@@ -120,7 +123,7 @@ void setup() {
     set_psram_clock(32);
 
 
-    tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 32);
+    tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
 #ifdef ARDUINO_TEENSY41
@@ -132,17 +135,19 @@ void setup() {
 
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
+    #if FRAME_BUFFER_PIXEL_SIZE > 2
     tft.setBitDepth(24);
+    #endif
 
     tft.displayInfo();
 
     // Frame buffer will not fit work with malloc see if
     if (tft_frame_buffer) {
         Serial.printf("&&& Set FrameBuffer(%d): %p\n", FRAME_BUFFER_PIXEL_SIZE, tft_frame_buffer);
-#if FRAME_BUFFER_PIXEL_SIZE == 4
-        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))), 24);
+#if FRAME_BUFFER_PIXEL_SIZE > 2
+        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 31) & ~((uintptr_t)(31))), 24);
 #else
-        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))));
+        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 31) & ~((uintptr_t)(31))));
 #endif
     }
     tft.setRotation(ROTATION);
@@ -283,6 +288,11 @@ void drawTestScreen() {
     SetupOrClearClipRectAndOffsets();
     uint32_t start_time = millis();
     tft.fillScreen(use_fb ? (use_dma ? NT35510_BLUE : NT35510_RED) : NT35510_BLACK);
+    //#if FRAME_BUFFER_PIXEL_SIZE > 2
+    //tft.fillRect24BPP(0, 0, tft.width(), tft.height(), use_fb ? tft.color888(0xff, 0, 0) : 0);
+    //#else
+    //tft.fillScreen(use_fb ? NT35510_RED : NT35510_BLACK);
+    //#endif
     //tft.setFont(Inconsolata_60);
     MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nAfter FillScreen\n");
     tft.setFont(Arial_24_Bold);
@@ -424,10 +434,15 @@ void drawTestScreen() {
     //    arm_dcache_flush(tft.getFrameBuffer(), tft.width() * tft.height() * 3);
     //    MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
     //}
+//    uint8_t *pb = (uint8_t*)tft.getFrameBuffer();
+//    for (int i=0; i < 256;i++) *pb++ = i;
+    if (use_fb)
+        MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
     if (use_dma) {
         Serial.println("$$$ Using UpdateScreenAsync");
         tft.updateScreenAsync();
     } else {
+        // setup for part of FB to see what order we get things.
         tft.updateScreen();
     }
 

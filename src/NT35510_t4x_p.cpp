@@ -1,6 +1,9 @@
 #include "NT35510_t4x_p.h"
 #include "NT35510_t4x_p_default_flexio_pins.h"
 
+#define SHIFTER_DMA_REQUEST (_write_shifter + _cnt_flexio_shifters - 1) // only 0, 1, 2, 3 expected to work
+#define SHIFTER_IRQ (_write_shifter + _cnt_flexio_shifters - 1)
+
 
 #if !defined(__IMXRT1062__)
 #warning This library only supports the Teensy 4.x
@@ -131,6 +134,8 @@ FLASHMEM uint8_t NT35510_t4x_p::setBitDepth(uint8_t bitDepth) {
     case 24: // Unsupported
         _bitDepth = 24;
         bd = 0x77;
+        // testing hack.
+        _cnt_flexio_shifters = 1;
         break;
     default: // Unsupported
         return _bitDepth;
@@ -345,9 +350,20 @@ FASTRUN void NT35510_t4x_p::pushPixels16bitDMA(const uint16_t *pcolors, uint16_t
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
-    uint32_t area = (x2 - x1 + 1) * (y2 - y1 + 1);
+    uint32_t length = (x2 - x1 + 1) * (y2 - y1 + 1);
+    Serial.printf("pushPixels16bitDMA(%p, %u, %u, %u, %u): %u\n", pcolors, x1, y1, x2, y2, length);
+    if (length == 0) return;
+    // force to output full accress...
+    _previous_addr_x0 = 0xffff;
+    _previous_addr_y0 = 0xffff;
     setAddr(x1, y1, x2, y2);
-    MulBeatWR_nPrm_DMA(NT35510_RAMWR, pcolors, area);
+
+    // if length is too short, just go do it using not DMA
+    if (length < 8) {
+        SglBeatWR_nPrm_16(NT35510_RAMWR, pcolors, length);
+    } else {
+        MulBeatWR_nPrm_DMA(NT35510_RAMWR, pcolors, length);
+    }
 }
 
 ///////////////////
@@ -1372,7 +1388,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
     DBGPrintf("NT35510_t4x_p::FlexIO_Config_MultiBeat() - Enter\n");
 
     uint32_t i;
-    uint8_t MulBeatWR_BeatQty = SHIFTNUM * sizeof(uint32_t) / sizeof(uint8_t); // Number of beats = number of shifters * beats per shifter
+    uint8_t MulBeatWR_BeatQty = _cnt_flexio_shifters * sizeof(uint32_t) / sizeof(uint8_t); // Number of beats = number of shifters * beats per shifter
     if (_bus_width > 8)  MulBeatWR_BeatQty = MulBeatWR_BeatQty / 2;            // we use 16 bits at a time for T4...
 
     /* Disable and reset FlexIO */
@@ -1382,7 +1398,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
 
     gpioWrite();
 
-    for (i = 0; i <= SHIFTNUM - 1; i++) {
+    for (i = 0; i <= (uint8_t)(_cnt_flexio_shifters - 1); i++) {
         _pflexio_imxrt->SHIFTCFG[_write_shifter + i] =
             FLEXIO_SHIFTCFG_INSRC * (1U)       /* Shifter input from next shifter's output */
             | FLEXIO_SHIFTCFG_SSTOP(0U)        /* Shifter stop bit disabled */
@@ -1398,7 +1414,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
         | FLEXIO_SHIFTCTL_PINPOL * (0U)       /* Shifter's pin active high */
         | FLEXIO_SHIFTCTL_SMOD(2U);           /* shifter mode transmit */
 
-    for (i = 1; i <= SHIFTNUM - 1; i++) {
+    for (i = 1; i <= (uint8_t)(_cnt_flexio_shifters - 1); i++) {
         _pflexio_imxrt->SHIFTCTL[_write_shifter + i] =
             FLEXIO_SHIFTCTL_TIMSEL(_flexio_timer) /* Shifter's assigned timer index */
             | FLEXIO_SHIFTCTL_TIMPOL * (0U)       /* Shift on posedge of shift clock */
@@ -1635,14 +1651,24 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
 }
 
 void dumpDMA_TCD(DMABaseClass *dmabc, const char *psz_title) {
-  if (psz_title)
-    Serial.print(psz_title);
-  Serial.printf("%x %x:", (uint32_t)dmabc, (uint32_t)dmabc->TCD);
+    if (psz_title)
+        Serial.print(psz_title);
+    
+    Serial.printf("%x %x: ", (uint32_t)dmabc, (uint32_t)dmabc->TCD);
 
-  Serial.printf(
-      "SA:%x SO:%d AT:%x NB:%x SL:%d DA:%x DO: %d CI:%x DL:%x CS:%x BI:%x\n",
-      (uint32_t)dmabc->TCD->SADDR, dmabc->TCD->SOFF, dmabc->TCD->ATTR,
-      dmabc->TCD->NBYTES, dmabc->TCD->SLAST, (uint32_t)dmabc->TCD->DADDR,
+    Serial.printf(
+      "SA:%x SO:%d AT:%x ",
+      (uint32_t)dmabc->TCD->SADDR, dmabc->TCD->SOFF, dmabc->TCD->ATTR);
+
+    if (DMA_CR & DMA_CR_EMLM) {
+        Serial.printf("ML S:%x D:%x MOFF:%x, NB:%x ", (dmabc->TCD->NBYTES >> 31) & 1, (dmabc->TCD->NBYTES >> 30) & 1,
+                        (dmabc->TCD->NBYTES >> 10) & 0xfffff, dmabc->TCD->NBYTES & 0x3ff);
+    } else {
+        Serial.printf("NB:%x ", dmabc->TCD->NBYTES);
+    }
+    Serial.printf(
+      "SL:%d DA:%x DO: %d CI:%x DL:%x CS:%x BI:%x\n",
+      dmabc->TCD->SLAST, (uint32_t)dmabc->TCD->DADDR,
       dmabc->TCD->DOFF, dmabc->TCD->CITER, dmabc->TCD->DLASTSGA,
       dmabc->TCD->CSR, dmabc->TCD->BITER);
 }
@@ -1650,76 +1676,75 @@ void dumpDMA_TCD(DMABaseClass *dmabc, const char *psz_title) {
 
 NT35510_t4x_p *NT35510_t4x_p::dmaCallback = nullptr;
 DMAChannel NT35510_t4x_p::flexDma;
-DMASetting NT35510_t4x_p::_dmaSettings[2];
+DMASetting NT35510_t4x_p::_dmaSettings[9];
 
 FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *value, uint32_t length) {
-    DBGPrintf("NT35510_t4x_p::MulBeatWR_nPrm_DMA(%x, %x, %u\n", cmd, value, length);
+    Serial.printf/*DBGPrintf*/("NT35510_t4x_p::MulBeatWR_nPrm_DMA(%x, %x, %u)\n", cmd, value, length);
     while (WR_AsyncTransferDone == false) {
         // Wait for any DMA transfers to complete
     }
-    uint32_t BeatsPerMinLoop = SHIFTNUM * sizeof(uint32_t) / sizeof(uint8_t); // Number of shifters * number of 8 bit values per shifter
+
+
+    uint32_t BeatsPerMinLoop = _cnt_flexio_shifters * sizeof(uint32_t) / sizeof(uint8_t); // Number of shifters * number of 8 bit values per shifter
     uint32_t majorLoopCount, minorLoopBytes;
-    uint32_t destinationModulo = 31 - (__builtin_clz(SHIFTNUM * sizeof(uint32_t))); // defines address range for circular DMA destination buffer
+    uint32_t destinationModulo = 31 - (__builtin_clz(_cnt_flexio_shifters * sizeof(uint32_t))); // defines address range for circular DMA destination buffer
 
     FlexIO_Config_SnglBeat();
     CSLow();
     output_command_helper(cmd);
     microSecondDelay();
 
-    if (length < 8) {
-        // Serial.println ("In DMA but to Short to multibeat");
-        const uint16_t *newValue = (uint16_t *)value;
-        uint16_t buf;
-        for (uint32_t i = 0; i < length; i++) {
-            buf = *newValue++;
-            waitWriteShiftStat(__LINE__);
-            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(buf >> 8);
+    // Pulled out check for length < 8 and put it into caller, who then calls the Single beat version instead as
+    // there were several variations that were not handled properly here.
 
-            waitWriteShiftStat(__LINE__);
-            _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(buf & 0xFF);
-        }
-        // Wait for transfer to be completed
-        while (0 == (_pflexio_imxrt->TIMSTAT & _flexio_timer_mask)) {
-        }
+    FlexIO_Config_MultiBeat();
 
-        microSecondDelay();
-        CSHigh();
+    // Note we have at least 4 cases to consider:
+    // a) color16 (RGB565) and 8 bit buss - Our norm up till now - two 8 bit transfers per pixel.
+    // b) RGB565 and 16 bit buss - 1 16 bit transfer per pixel
+    // c) 24 bit color and 8 bit buss - 3 8 bit transfers per pixel.
+    // d) 24 bit color and 16 bit buss - 3 16 bit trasfers for 2 pixels.
+    // Most of the counts are based on how total bytes need to be transferred to the FlexIO buffers in 32 bit chunks
+    // and Maybe which of the shift register buffer types may be used.
 
+//    if (_bitDepth == 24) TotalSize = length * 3;
+//    else TotalSize = length * 2;
+
+    // These counts are probably wrong or too specific, but in most cases left over will be 0, so later...
+    MulBeatCountRemain = length % BeatsPerMinLoop;
+    MulBeatDataRemain = (uint16_t *)value + ((length - MulBeatCountRemain)); // pointer to the next unused byte (overflow if MulBeatCountRemain = 0)
+    
+    if (_bitDepth == 24) TotalSize = (length - MulBeatCountRemain) * 3;
+    else TotalSize = (length - MulBeatCountRemain) * 2;
+
+    if ((uint32_t)value >= 0x20200000u) {
+        arm_dcache_flush((void*)value, TotalSize);
     }
 
-    else {
-        // memcpy(framebuff, value, length);
-        // arm_dcache_flush((void*)framebuff, sizeof(framebuff)); // always flush cache after writing to DMAMEM variable that will be accessed by DMA
-        if ((uint32_t)value >= 0x20200000u) {
-            arm_dcache_flush((void*)value, length*2);
-        }
 
-        FlexIO_Config_MultiBeat();
+    minorLoopBytes = _cnt_flexio_shifters * sizeof(uint32_t);
+    majorLoopCount = TotalSize / minorLoopBytes;
 
-        MulBeatCountRemain = length % BeatsPerMinLoop;
-        MulBeatDataRemain = (uint16_t *)value + ((length - MulBeatCountRemain)); // pointer to the next unused byte (overflow if MulBeatCountRemain = 0)
-        TotalSize = (length - MulBeatCountRemain) * 2;                           /* in bytes */
-        minorLoopBytes = SHIFTNUM * sizeof(uint32_t);
-        majorLoopCount = TotalSize / minorLoopBytes;
-        // Serial.printf("Length(16bit): %d, Count remain(16bit): %d, Data remain: %d, TotalSize(8bit): %d, majorLoopCount: %d \n",length, MulBeatCountRemain, MulBeatDataRemain, TotalSize, majorLoopCount );
+    /* Configure FlexIO with multi-beat write configuration */
+    flexDma.begin();
 
-        /* Configure FlexIO with multi-beat write configuration */
-        flexDma.begin();
+    /* Setup DMA transfer with on-the-fly swapping of MSB and LSB in 16-bit data:
+     *  Within each minor loop, read 16-bit values from buf in reverse order, then write 32bit values to SHIFTBUFBYS[i] in reverse order.
+     *  Result is that every pair of bytes are swapped, while half-words are unswapped.
+     *  After each minor loop, advance source address using minor loop offset. */
+    int destinationAddressOffset, destinationAddressLastOffset, sourceAddressOffset, sourceAddressLastOffset, minorLoopOffset;
+    volatile void *destinationAddress, *sourceAddress;
 
-        /* Setup DMA transfer with on-the-fly swapping of MSB and LSB in 16-bit data:
-         *  Within each minor loop, read 16-bit values from buf in reverse order, then write 32bit values to SHIFTBUFBYS[i] in reverse order.
-         *  Result is that every pair of bytes are swapped, while half-words are unswapped.
-         *  After each minor loop, advance source address using minor loop offset. */
-        int destinationAddressOffset, destinationAddressLastOffset, sourceAddressOffset, sourceAddressLastOffset, minorLoopOffset;
-        volatile void *destinationAddress, *sourceAddress;
 
+    Serial.printf("Length(pixels): %d, Count remain(16bit): %d, Data remain: %p, TotalSize(8bit): %d, majorLoopCount: %d \n",length, MulBeatCountRemain, MulBeatDataRemain, TotalSize, majorLoopCount );
+    if (_bitDepth < 24) {
         DMA_CR |= DMA_CR_EMLM; // enable minor loop mapping
 
         sourceAddress = (uint16_t *)value + minorLoopBytes / sizeof(uint16_t) - 1; // last 16bit address within current minor loop
         sourceAddressOffset = -sizeof(uint16_t);                                   // read values in reverse order
         minorLoopOffset = 2 * minorLoopBytes;                                      // source address offset at end of minor loop to advance to next minor loop
         sourceAddressLastOffset = minorLoopOffset - TotalSize;                     // source address offset at completion to reset to beginning
-        destinationAddress = (uint32_t *)&_pflexio_imxrt->SHIFTBUFBYS[SHIFTNUM - 1];            // last 32bit shifter address (with reverse byte order)
+        destinationAddress = (uint32_t *)&_pflexio_imxrt->SHIFTBUFBYS[_cnt_flexio_shifters - 1];            // last 32bit shifter address (with reverse byte order)
         destinationAddressOffset = -sizeof(uint32_t);                              // write words in reverse order
         destinationAddressLastOffset = 0;
 
@@ -1731,7 +1756,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
             flexDma.TCD->DOFF = destinationAddressOffset;
             flexDma.TCD->DLASTSGA = destinationAddressLastOffset;
             flexDma.TCD->ATTR =
-                DMA_TCD_ATTR_SMOD(0U) | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT)                   // 16bit reads
+                DMA_TCD_ATTR_SMOD(0U) | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_32BIT)                   // 16bit reads
                 | DMA_TCD_ATTR_DMOD(destinationModulo) | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
             flexDma.TCD->NBYTES_MLOFFYES =
                 DMA_TCD_NBYTES_SMLOE | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset) | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
@@ -1746,71 +1771,123 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
             dumpDMA_TCD(&flexDma, "NT35510_t4x_p)\n");
             #endif
         } else {
-                // Too big to fit into one DMASetting.
-            // Too big to fit into one...  
-            uint32_t half_major_loop_count = majorLoopCount / 2;      
-            _dmaSettings[0].TCD->SADDR = sourceAddress;
-            _dmaSettings[0].TCD->SOFF = sourceAddressOffset;
-            _dmaSettings[0].TCD->SLAST = sourceAddressLastOffset;
-            _dmaSettings[0].TCD->DADDR = destinationAddress;
-            _dmaSettings[0].TCD->DOFF = destinationAddressOffset;
-            _dmaSettings[0].TCD->DLASTSGA = destinationAddressLastOffset;
-            _dmaSettings[0].TCD->ATTR =
-                DMA_TCD_ATTR_SMOD(0U)
-                | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT) // 16bit reads
-                | DMA_TCD_ATTR_DMOD(destinationModulo)
-                | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
-            _dmaSettings[0].TCD->NBYTES_MLOFFYES = 
-                DMA_TCD_NBYTES_SMLOE
-                | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset)
-                | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
-            _dmaSettings[0].TCD->CITER = half_major_loop_count; // Current major iteration count
-            _dmaSettings[0].TCD->BITER = half_major_loop_count; // Starting major iteration count
-            _dmaSettings[0].replaceSettingsOnCompletion(_dmaSettings[1]);
+            sourceAddress = (uint16_t *)value + minorLoopBytes / sizeof(uint16_t) - 1; // last 16bit address within current minor loop
+            sourceAddressOffset = -sizeof(uint16_t);                                   // read values in reverse order
+            minorLoopOffset = 2 * minorLoopBytes;                                      // source address offset at end of minor loop to advance to next minor loop
+            sourceAddressLastOffset = minorLoopOffset - TotalSize;                     // source address offset at completion to reset to beginning
+            destinationAddress = (uint32_t *)&_pflexio_imxrt->SHIFTBUFBYS[_cnt_flexio_shifters - 1];            // last 32bit shifter address (with reverse byte order)
+            destinationAddressOffset = -sizeof(uint32_t);                              // write words in reverse order
+            destinationAddressLastOffset = 0;
+                uint8_t count_dma_settings = (majorLoopCount + 32766) / 32767; // how many do we need
 
-            _dmaSettings[1].TCD->SADDR = (uint8_t *)sourceAddress + (half_major_loop_count * minorLoopBytes);
-            _dmaSettings[1].TCD->SOFF = sourceAddressOffset;
-            _dmaSettings[1].TCD->SLAST = sourceAddressLastOffset;
-            _dmaSettings[1].TCD->DADDR = destinationAddress;
-            _dmaSettings[1].TCD->DOFF = destinationAddressOffset;
-            _dmaSettings[1].TCD->DLASTSGA = destinationAddressLastOffset;
-            _dmaSettings[1].TCD->ATTR =
-                DMA_TCD_ATTR_SMOD(0U)
-                | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT) // 16bit reads
-                | DMA_TCD_ATTR_DMOD(destinationModulo)
-                | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
-            _dmaSettings[1].TCD->NBYTES_MLOFFYES = 
-                DMA_TCD_NBYTES_SMLOE
-                | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset)
-                | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
-            _dmaSettings[1].TCD->CITER = majorLoopCount - half_major_loop_count; // Current major iteration count
-            _dmaSettings[1].TCD->BITER = majorLoopCount - half_major_loop_count; // Starting major iteration count
-            _dmaSettings[1].disableOnCompletion();
-            _dmaSettings[1].interruptAtCompletion();
-            _dmaSettings[1].replaceSettingsOnCompletion(_dmaSettings[0]);
+            // Too big to fit into one DMASetting.
+            uint32_t loops_per_setting = majorLoopCount / count_dma_settings;
+            if ((loops_per_setting * count_dma_settings) < majorLoopCount) loops_per_setting++; 
+            Serial.printf("\tCount Settings:%u loops per:%u\n", count_dma_settings, loops_per_setting);
+            for (uint8_t i = 0; i < count_dma_settings; i++) {
+                if (loops_per_setting > majorLoopCount) loops_per_setting = majorLoopCount;
+                _dmaSettings[i].TCD->SADDR = sourceAddress;
+                _dmaSettings[i].TCD->SOFF = sourceAddressOffset;
+                _dmaSettings[i].TCD->SLAST = sourceAddressLastOffset;
+                _dmaSettings[i].TCD->DADDR = destinationAddress;
+                _dmaSettings[i].TCD->DOFF = destinationAddressOffset;
+                _dmaSettings[i].TCD->DLASTSGA = destinationAddressLastOffset;
+                _dmaSettings[i].TCD->ATTR =
+                    DMA_TCD_ATTR_SMOD(0U)
+                    | DMA_TCD_ATTR_SSIZE(DMA_TCD_ATTR_SIZE_16BIT) // 16bit reads
+                    | DMA_TCD_ATTR_DMOD(destinationModulo)
+                    | DMA_TCD_ATTR_DSIZE(DMA_TCD_ATTR_SIZE_32BIT); // 32bit writes
+                _dmaSettings[i].TCD->NBYTES_MLOFFYES = 
+                    DMA_TCD_NBYTES_SMLOE
+                    | DMA_TCD_NBYTES_MLOFFYES_MLOFF(minorLoopOffset)
+                    | DMA_TCD_NBYTES_MLOFFYES_NBYTES(minorLoopBytes);
+                _dmaSettings[i].TCD->CITER = loops_per_setting; // Current major iteration count
+                _dmaSettings[i].TCD->BITER = loops_per_setting; // Starting major iteration count
+                _dmaSettings[i].replaceSettingsOnCompletion(_dmaSettings[i+1]);
+                sourceAddress = (uint8_t *)sourceAddress + (loops_per_setting * minorLoopBytes);
+                majorLoopCount -= loops_per_setting;
+            }
+
+            count_dma_settings--; // make 0 based for the rest of this...
+            _dmaSettings[count_dma_settings].replaceSettingsOnCompletion(_dmaSettings[0]);
+
+            _dmaSettings[count_dma_settings].disableOnCompletion();
+            _dmaSettings[count_dma_settings].interruptAtCompletion();
 
             flexDma = _dmaSettings[0];
             flexDma.triggerAtHardwareEvent(hw->shifters_dma_channel[SHIFTER_DMA_REQUEST]);
             flexDma.clearComplete();
-            #ifdef DEBUG
+            #if 1 //def DEBUG
             dumpDMA_TCD(&flexDma, "\n*** MulBeatWR_nPrm_DMA ***\n");
-            dumpDMA_TCD(&_dmaSettings[0], "DmaSettings[0]\n");
-            dumpDMA_TCD(&_dmaSettings[1], "DmaSettings[1]\n");
+            for (uint8_t i = 0; i <= count_dma_settings; i++) {
+                Serial.printf("DmaSettings[%u]\n", i);
+                dumpDMA_TCD(&_dmaSettings[i], "");
+            }
             #endif
         }
+    } else {
+        // 24 bit. 
+        // Lets start by using 1 DMABUFFER
 
-        // Serial.println("Dma setup done");
+        //sourceAddress = (uint32_t *)value; // last 16bit address within current minor loop
+        //sourceAddressOffset = -sizeof(uint32_t);                                   // read values in reverse order
+        //minorLoopOffset = 2 * minorLoopBytes;                                      // source address offset at end of minor loop to advance to next minor loop
+        //sourceAddressLastOffset = minorLoopOffset - TotalSize;                     // source address offset at completion to reset to beginning
+        //destinationAddress = (uint32_t *)&_pflexio_imxrt->SHIFTBUFBYS[_cnt_flexio_shifters - 1];            // last 32bit shifter address (with reverse byte order)
+        //destinationAddressOffset = -sizeof(uint32_t);                              // write words in reverse order
+        //destinationAddressLastOffset = 0;
 
-        /* Start data transfer by using DMA */
-        WR_AsyncTransferDone = false;
-        flexDma.attachInterrupt(dmaISR);
+        uint32_t *pSA32 = (uint32_t*)value;
+        majorLoopCount = TotalSize / 4;
 
+        uint8_t count_dma_settings = (majorLoopCount + 32766) / 32767; // how many do we need
 
-        flexDma.enable();
-        // Serial.println("Starting transfer");
-        dmaCallback = this;
+        uint32_t loops_per_setting = majorLoopCount / count_dma_settings;
+        if ((loops_per_setting * count_dma_settings) < majorLoopCount) loops_per_setting++; 
+        Serial.printf("\tEnd Address: %p  2nd:%p\n", (uint8_t*)value + TotalSize, (uint8_t*)value + TotalSize/count_dma_settings);
+
+        Serial.printf("\tCount Settings:%u loops per:%u\n", count_dma_settings, loops_per_setting);
+        for (uint8_t i = 0; i < count_dma_settings; i++) {
+            if (loops_per_setting > majorLoopCount) loops_per_setting = majorLoopCount;
+            _dmaSettings[i].sourceBuffer(pSA32, loops_per_setting * 4);
+            _dmaSettings[i].destination(_pflexio_imxrt->SHIFTBUF[_write_shifter]);
+            _dmaSettings[i].replaceSettingsOnCompletion(_dmaSettings[i+1]);
+            pSA32 += loops_per_setting; 
+            majorLoopCount -= loops_per_setting;
+        }
+
+        count_dma_settings--; // make 0 based for the rest of this...
+        _dmaSettings[count_dma_settings].replaceSettingsOnCompletion(_dmaSettings[0]);
+
+        _dmaSettings[count_dma_settings].disableOnCompletion();
+        _dmaSettings[count_dma_settings].interruptAtCompletion();
+
+        flexDma = _dmaSettings[0];
+        flexDma.triggerAtHardwareEvent(hw->shifters_dma_channel[SHIFTER_DMA_REQUEST]);
+        flexDma.clearComplete();
+        #if 1 //def DEBUG
+        print_flexio_debug_data(_pFlex, _flexio_timer, _write_shifter, _read_shifter);
+
+        dumpDMA_TCD(&flexDma, "\n>>>> FlexDMA: ");
+        for (uint8_t i = 0; i <= count_dma_settings; i++) {
+            Serial.printf("         [%u]: ", i);
+            dumpDMA_TCD(&_dmaSettings[i], nullptr);
+        }
+        #endif
     }
+
+    // Serial.println("Dma setup done");
+
+    /* Start data transfer by using DMA */
+    WR_AsyncTransferDone = false;
+    flexDma.attachInterrupt(dmaISR);
+
+
+    flexDma.enable();
+    // Serial.println("Starting transfer");
+    dmaCallback = this;
 }
+
 
 FASTRUN void NT35510_t4x_p::_onCompleteCB() {
     if (_callback) {
@@ -1832,7 +1909,7 @@ FASTRUN void NT35510_t4x_p::flexDma_Callback() {
     data is still in the process of being shifted out from the second-to-last major iteration. In this state, all the status flags are cleared.
     when the second-to-last major iteration is fully shifted out, the final data is transfered from the buffers into the shifters which sets all the status flags.
     if you have only one major iteration, the status flags will be immediately set before the interrupt is called, so the while loop will be skipped. */
-    while (0 == (_pflexio_imxrt->SHIFTSTAT & (1U << (SHIFTNUM - 1)))) {
+    while (0 == (_pflexio_imxrt->SHIFTSTAT & (1U << (_cnt_flexio_shifters - 1)))) {
     }
 
     /* Wait the last multi-beat transfer to be completed. Clear the timer flag
@@ -2529,7 +2606,7 @@ bool NT35510_t4x_p::writeRectAsyncActiveFlexIO() {
 // ASYNC - Done BY IRQ - mainly for FlexIO3
 //=============================================================================
 //#define BEATS_PER_SHIFTER (sizeof(uint32_t)/sizeof(uint8_t))
-//#define BYTES_PER_BURST (BEATS_PER_SHIFTER*SHIFTNUM)
+//#define BYTES_PER_BURST (BEATS_PER_SHIFTER*_cnt_flexio_shifters)
 
 
 NT35510_t4x_p * NT35510_t4x_p::IRQcallback = nullptr;
@@ -2564,7 +2641,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
     uint32_t bytes = length*2U;
 
     _irq_bytes_per_shifter = (_bus_width != 10) ? 4 : 2;
-    _irq_bytes_per_burst = _irq_bytes_per_shifter * SHIFTNUM;
+    _irq_bytes_per_burst = _irq_bytes_per_shifter * _cnt_flexio_shifters;
 
     _irq_bursts_to_complete = bytes / _irq_bytes_per_burst;
 
@@ -2581,7 +2658,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
     DBGPrintf("bytes per shifter: %u per burst:%u ", _irq_bytes_per_shifter, _irq_bytes_per_burst);
     DBGPrintf("START::_irq_bursts_to_complete: %d _irq_bytes_remaining: %d remainder:%u\n", _irq_bursts_to_complete, _irq_bytes_remaining, remainder);
   
-    uint8_t beats = SHIFTNUM * _irq_bytes_per_shifter;
+    uint8_t beats = _cnt_flexio_shifters * _irq_bytes_per_shifter;
     _pflexio_imxrt->TIMCMP[_flexio_timer] = ((beats * 2U - 1) << 8) | (_baud_div / 2U - 1U);
 
     _pflexio_imxrt->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
@@ -2629,14 +2706,14 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
             _irq_readPtr = finalBurstBuffer;
             _irq_bytes_remaining = 0;
             if (_bus_width == 8) {
-                for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                     //digitalToggleFast(3);
                     uint32_t data = _irq_readPtr[i];
                     _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
                 }
             } else {
                 uint8_t *pb = (uint8_t*)_irq_readPtr;
-                for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                     //digitalToggleFast(3);
                     _pflexio_imxrt->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
                 }
@@ -2648,12 +2725,12 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
             if (_bitDepth == 24) {
                 if (_bus_width == 8) {
                     Serial.print(".");
-                    for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                    for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                         //digitalToggleFast(3);
                         uint32_t data = _irq_readPtr[i];
                         _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
                     }
-                    _irq_readPtr += SHIFTNUM;
+                    _irq_readPtr += _cnt_flexio_shifters;
 
                 } else if (_bus_width == 16) {
 
@@ -2661,19 +2738,19 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
             } else {
                 // try filling in reverse order
                 if (_bus_width == 8) {
-                    for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                    for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                         //digitalToggleFast(3);
                         uint32_t data = _irq_readPtr[i];
                         _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
                     }
-                    _irq_readPtr += SHIFTNUM;
+                    _irq_readPtr += _cnt_flexio_shifters;
                 } else {
                     uint8_t *pb = (uint8_t*)_irq_readPtr;
-                    for (int i = SHIFTNUM - 1; i >= 0; i--) {
+                    for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                         //digitalToggleFast(3);
                         _pflexio_imxrt->SHIFTBUF[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
                     }
-                    pb += (2 * SHIFTNUM);
+                    pb += (2 * _cnt_flexio_shifters);
                     _irq_readPtr = (uint32_t*)pb; 
                 }
             }
