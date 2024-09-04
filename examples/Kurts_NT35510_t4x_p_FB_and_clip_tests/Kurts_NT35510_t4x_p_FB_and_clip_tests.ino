@@ -20,7 +20,7 @@
 #define NT35510X_SPEED_MHZ 28
 
 
-#define FRAME_BUFFER_PIXEL_SIZE 2  // 2 or 3 for allocations...
+#define FRAME_BUFFER_PIXEL_SIZE 3  // 2 or 3 for allocations...
 
 #include <MemoryHexDump.h>
 
@@ -49,6 +49,8 @@ uint8_t use_clip_rect = 0;
 uint8_t use_set_origin = 0;
 uint8_t use_fb = 0;
 uint8_t *tft_frame_buffer = nullptr;
+uint16_t palette[256];  // Should probably be 256, but I don't use many colors...
+uint16_t pixel_data[12000];
 
 #define ORIGIN_TEST_X 50
 #define ORIGIN_TEST_Y 50
@@ -162,6 +164,7 @@ void setup() {
     tft.fillScreen(NT35510_BLUE);
     delay(500);
     tft.fillScreenHGradient(NT35510_BLACK, NT35510_GREEN);
+    tft.onCompleteCB(&frame_complete_callback);
     if (tft_frame_buffer) {
         delay(500);
         if (!tft.useFrameBuffer(true)) Serial.println("Use Frame buffer failed");
@@ -174,11 +177,19 @@ void setup() {
         //delay(500);
         tft.fillScreenVGradient(NT35510_BLACK, NT35510_LIGHTGREY);
         tft.updateScreen();
+        WaitForUserInput();
+        tft.fillScreen(NT35510_RED);
+        tft.updateScreenAsync();
+        delay(250);
+        tft.readRectFlexIO(0, 0, tft.width(), 2, pixel_data);
+        MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nFrame Buffer");
+        MemoryHexDump(Serial, pixel_data, 128, true, "\nReadRect\n");
+
+
     }
     WaitForUserInput();
     //
     //  button.initButton(&tft, 200, 125, 100, 40, NT35510_GREEN, NT35510_YELLOW, NT35510_RED, "UP", 1, 1);
-    tft.onCompleteCB(&frame_complete_callback);
 
     drawTestScreen();
 }
@@ -251,8 +262,6 @@ void SetupOrClearClipRectAndOffsets() {
 }
 
 
-uint16_t palette[256];  // Should probably be 256, but I don't use many colors...
-uint16_t pixel_data[12000];
 const uint8_t pict1bpp[] = {
     0xff, 0xff, 0xc0, 0x03, 0xa0, 0x05, 0x90, 0x9, 0x88, 0x11, 0x84, 0x21, 0x82, 0x41, 0x81, 0x81,
     0x81, 0x81, 0x82, 0x41, 0x84, 0x21, 0x88, 0x11, 0x90, 0x09, 0xa0, 0x05, 0xc0, 0x03, 0xff, 0xff

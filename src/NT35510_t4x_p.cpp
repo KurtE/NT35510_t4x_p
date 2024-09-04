@@ -2675,7 +2675,7 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
     DBGPrintf("%x %x %u %u ", _pflexio_imxrt->TIMSTAT, _pflexio_imxrt->SHIFTSTAT, _irq_bursts_to_complete, _irq_bytes_remaining);
   
  if (_pflexio_imxrt->TIMSTAT & _flexio_timer_mask) { // interrupt from end of burst
-        Serial.write('T');
+        //Serial.write('T');
         _pflexio_imxrt->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
         _irq_bursts_to_complete--;
         //if (_irq_bytes_remaining < 32) Serial.printf("T:%u %u\n", _irq_bursts_to_complete, _irq_bytes_remaining);
@@ -2731,9 +2731,10 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
                 } else if (_bus_width == 16) {
                     for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                         //digitalToggleFast(3);
-                        //uint32_t data = _irq_readPtr[i];
-                        //_pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
-                        _pflexio_imxrt->SHIFTBUF[i] = _irq_readPtr[i];
+                        uint32_t data = _irq_readPtr[i];
+                        _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
+                        //_pflexio_imxrt->SHIFTBUF[i] = _irq_readPtr[i];
+                        //Serial.print(".");
                     }
                     _irq_readPtr += _cnt_flexio_shifters;
                 }
