@@ -17,10 +17,10 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 30
+#define NT35510X_SPEED_MHZ 28
 
 
-#define FRAME_BUFFER_PIXEL_SIZE 3  // 2 or 4 for allocations...
+#define FRAME_BUFFER_PIXEL_SIZE 2  // 2 or 3 for allocations...
 
 #include <MemoryHexDump.h>
 
