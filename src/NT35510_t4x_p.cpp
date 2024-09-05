@@ -1695,8 +1695,11 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
     // Pulled out check for length < 8 and put it into caller, who then calls the Single beat version instead as
     // there were several variations that were not handled properly here.
         // testing hack.
-    if (_tpfb->dataWidth() == 24) {
+
+    bool reverse_bytes = true;
+    if (((_tpfb->dataWidth() == 24) && (_bus_width == 8)) || ((_tpfb->dataWidth() == 16) && (_bus_width == 16))) {
         _cnt_flexio_shifters = 1;
+        reverse_bytes = false;
     }
 
     FlexIO_Config_MultiBeat();
@@ -1739,7 +1742,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
 
 
     Serial.printf("Length(pixels): %d, Count remain(16bit): %d, Data remain: %p, TotalSize(8bit): %d, majorLoopCount: %d \n",length, MulBeatCountRemain, MulBeatDataRemain, TotalSize, majorLoopCount );
-    if (_tpfb->dataWidth() < 24) {
+    if (reverse_bytes) { // (_tpfb->dataWidth() < 24) || (_bus_width == 16)) {
         DMA_CR |= DMA_CR_EMLM; // enable minor loop mapping
 
         sourceAddress = (uint16_t *)value + minorLoopBytes / sizeof(uint16_t) - 1; // last 16bit address within current minor loop

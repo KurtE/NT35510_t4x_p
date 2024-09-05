@@ -20,7 +20,7 @@
 #define NT35510X_SPEED_MHZ 28
 
 
-#define FRAME_BUFFER_PIXEL_SIZE 3  // 2 or 3 for allocations...
+#define FRAME_BUFFER_PIXEL_SIZE 2  // 2 or 3 for allocations...
 
 #include <MemoryHexDump.h>
 
@@ -114,6 +114,7 @@ void setup() {
     Serial.print("DEVBRD5 - ");
     tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
     Serial.printf("FB Alloc:%p ", tft_frame_buffer);
+    //tft.setBusWidth(16);
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
@@ -126,6 +127,7 @@ void setup() {
 
 
     tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
+
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
 #ifdef ARDUINO_TEENSY41
@@ -182,7 +184,7 @@ void setup() {
         tft.updateScreenAsync();
         delay(250);
         tft.readRectFlexIO(0, 0, tft.width(), 2, pixel_data);
-        MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nFrame Buffer");
+        MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nFrame Buffer\n");
         MemoryHexDump(Serial, pixel_data, 128, true, "\nReadRect\n");
 
 
