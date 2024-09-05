@@ -114,7 +114,7 @@ void setup() {
     Serial.print("DEVBRD5 - ");
     tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
     Serial.printf("FB Alloc:%p ", tft_frame_buffer);
-    //tft.setBusWidth(16);
+    tft.setBusWidth(16);
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)

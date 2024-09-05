@@ -54,6 +54,7 @@
 //-----------------------------------------------------------------------------
 #define NT35510X NT35510
 #define NT35510X_SPEED_MHZ 20
+#define BUS_WIDTH 16
 
 #ifdef ARDUINO_TEENSY41
 #define TFT_DC 10
@@ -65,9 +66,16 @@
 #define TFT_RST 2
 #elif defined(ARDUINO_TEENSY_DEVBRD4) || defined(ARDUINO_TEENSY_DEVBRD5)
 extern "C" bool sdram_begin(uint8_t external_sdram_size, uint8_t clock, uint8_t useDQS);
+#if defined(ARDUINO_TEENSY_DEVBRD4)
 #define TFT_DC 10
 #define TFT_CS 11
 #define TFT_RST 12
+#else //DB5
+#define TFT_DC 55
+#define TFT_CS 53
+#define TFT_RST 54
+#endif
+
 #else  // micromod?
 #define TFT_DC 4
 #define TFT_CS 5
@@ -212,6 +220,10 @@ void setup(void) {
 #endif
 
     Serial.println("*** start up NT35510 ***");
+    #ifdef BUS_WIDTH
+    tft.setBusWidth(BUS_WIDTH);
+    #endif
+
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
     tft.setBitDepth(24);
     tft.setRotation(1);
