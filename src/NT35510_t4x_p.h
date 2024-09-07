@@ -160,7 +160,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
                        uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
                        uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7,
                        uint8_t d8=0xff, uint8_t d9=0xff, uint8_t d10=0xff, uint8_t d11=0xff,
-                       uint8_t d12=0xff, uint8_t d13=0xff, uint8_t d14=0xff, uint8_t d15=0xff);
+                       uint8_t d12=0xff, uint8_t d13=0xff, uint8_t d14=0xff, uint8_t d15=0xff,
+                       uint8_t d16=0xff, uint8_t d17=0xff);
 
     uint8_t setBitDepth(uint8_t bitDepth);
     uint8_t getBitDepth();
@@ -317,7 +318,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     IMXRT_FLEXIO_t *_pflexio_imxrt;
     const FlexIOHandler::FLEXIO_Hardware_t *hw;
     static DMAChannel flexDma;
-    static DMASetting _dmaSettings[9];
+    static DMASetting _dmaSettings[12];
 
     uint8_t _baud_div = 20;
 
@@ -335,7 +336,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     int8_t _dc, _cs, _rst;
 
     // The Teensy IO pins used for data and Read and Write
-    uint8_t _data_pins[16], _wr_pin, _rd_pin;
+    uint8_t _data_pins[18], _wr_pin, _rd_pin;
 
     uint8_t _flexio_D0, _flexio_WR, _flexio_RD; // which flexio pins do they map to
     uint8_t _write_shifter = 0;

@@ -66,10 +66,8 @@
 #define DISPLAY_D15 50	//		 B0_03 FlexIO2:19 D15
 
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
-// BUGBUG Nibble mode
-// Will currently fail
-#define DISPLAY_RD 52	// FlexIO3:10: RD
-#define DISPLAY_WR 56	// FlexIO3:11 WR
+#define DISPLAY_RD 52	// FlexIO2:20: RD
+#define DISPLAY_WR 56	// FlexIO2:24 WR
 
 #define DISPLAY_D0 40 // 40      B0_04   FlexIO2:4
 #define DISPLAY_D1 41 // 41      B0_05   FlexIO2:5
@@ -88,6 +86,10 @@
 #define DISPLAY_D13 7	//		 B1_01 FlexIO2:17 |
 #define DISPLAY_D14 50	//		 B0_02 FlexIO2:18 |
 #define DISPLAY_D15 51	//		 B0_03 FlexIO2:19 D15
+
+// 
+#define DISPLAY_D16 52	//		 FlexIO2:20  // screwed up with RD pin...
+#define DISPLAY_D17 53	//		 FlexIO2:21  // And CS pin
 
 
 #else // #if defined(ARDUINO_TEENSY_MICROMOD)

@@ -29,6 +29,22 @@ void inline VDBGPrintf(...){};
 #define VDBGPrintf Serial.printf
 #endif
 
+// These could be put into header...
+inline uint32_t color565To666(uint16_t color) {
+    //        G and B                        R
+    return ((color & 0x07FF) << 1) | ((color & 0xF800) << 2);
+}
+
+inline uint16_t color666To565(uint32_t color) {
+    //        G and B                        R
+    return ((color & 0x0FFF) >> 1) | ((color & 0x3E000) >> 2);
+}
+
+inline uint32_t color888To666(uint32_t color) {
+    //             B (8->6)                G (8->6)
+    return ((color & 0xfc) >> 2) | ((color & 0xfc00) >> 4) | ((color & 0xfc0000) >> 6);
+}
+
 
 
 //--------------------------------------------------
@@ -36,10 +52,14 @@ void inline VDBGPrintf(...){};
 FLASHMEM NT35510_t4x_p::NT35510_t4x_p(int8_t dc, int8_t cs, int8_t rst)
     : Teensy_Parallel_GFX(_TFTWIDTH, _TFTHEIGHT), _dc(dc), _cs(cs), _rst(rst),
       _data_pins{DISPLAY_D0, DISPLAY_D1, DISPLAY_D2, DISPLAY_D3, DISPLAY_D4, DISPLAY_D5, DISPLAY_D6, DISPLAY_D7,
-  #if defined(DISPLAY_D8)
-      DISPLAY_D8, DISPLAY_D9, DISPLAY_D10, DISPLAY_D11, DISPLAY_D12, DISPLAY_D13, DISPLAY_D14, DISPLAY_D15}, 
+#if defined(DISPLAY_D8)
+      DISPLAY_D8, DISPLAY_D9, DISPLAY_D10, DISPLAY_D11, DISPLAY_D12, DISPLAY_D13, DISPLAY_D14, DISPLAY_D15
+#if defined(DISPLAY_D16)
+      , DISPLAY_D16, DISPLAY_D17
+#endif      
+  },
 #else
-      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 #endif      
       _wr_pin(DISPLAY_WR), _rd_pin(DISPLAY_RD) {
 }
@@ -943,7 +963,7 @@ FASTRUN void NT35510_t4x_p::gpioRead() {
 // Set the FlexIO pins.  The first version you can specify just the wr, and read and optionsl first Data.
 // it will use information in the Flexio library to fill in d1-d7
 FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uint8_t tft_d0) {
-    DBGPrintf("NT35510_t4x_p::setFlexIOPins(%u, %u, %u) %u %u %u\n", write_pin, rd_pin, tft_d0, _data_pins[0], _wr_pin, _rd_pin);
+    Serial.printf("NT35510_t4x_p::setFlexIOPins(%u, %u, %u) was: %u %u %u\n", write_pin, rd_pin, tft_d0, _wr_pin, _rd_pin,  _data_pins[0]);
     DBGFlush();
     if (tft_d0 != 0xff) {
 #ifdef FLEX_IO_HAS_FULL_PIN_MAPPING
@@ -973,6 +993,13 @@ FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uin
     _wr_pin = write_pin;
     _rd_pin = rd_pin;
 
+    Serial.printf("FlexIO pins: WR:%u RD:%u DATA: ", _wr_pin, _rd_pin);
+    for (uint8_t i = 0; i < _bus_width; i++) {
+        Serial.printf(" %u", _data_pins[i]);
+    }
+    Serial.println();
+
+
     DBGPrintf("FlexIO pins: data: %u %u %u %u %u %u %u %u WR:%u RD:%u\n",
               _data_pins[0], _data_pins[1], _data_pins[2], _data_pins[3], _data_pins[4], _data_pins[5], _data_pins[6], _data_pins[7],
               _wr_pin, _rd_pin);
@@ -982,7 +1009,7 @@ FASTRUN bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uin
 // Set the FlexIO NT35510_t4x_p.  Specify all of the pins for 8 bit mode. Must be called before begin
 FLASHMEM bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
                                            uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7, uint8_t d8, uint8_t d9, uint8_t d10,
-                                           uint8_t d11, uint8_t d12, uint8_t d13, uint8_t d14, uint8_t d15 ) {
+                                           uint8_t d11, uint8_t d12, uint8_t d13, uint8_t d14, uint8_t d15, uint8_t d16, uint8_t d17 ) {
 
     _data_pins[0] = d0;
     _data_pins[1] = d1;
@@ -1002,11 +1029,13 @@ FLASHMEM bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, ui
     _data_pins[13] = d13;
     _data_pins[14] = d14;
     _data_pins[15] = d15;
+    _data_pins[16] = d16;
+    _data_pins[17] = d17;
 
-    DBGPrintf("FlexIO pins: data: %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u WR:%u RD:%u\n",
+    DBGPrintf("FlexIO pins: data: %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u WR:%u RD:%u\n",
               _data_pins[0], _data_pins[1], _data_pins[2], _data_pins[3], _data_pins[4], _data_pins[5], _data_pins[6], _data_pins[7],
               _data_pins[8], _data_pins[9], _data_pins[10], _data_pins[11], _data_pins[12], _data_pins[13], _data_pins[14], _data_pins[15],
-              _wr_pin, _rd_pin);
+              _data_pins[16], _data_pins[17], _wr_pin, _rd_pin);
     // Note this does not verify the pins are valid.
     return true;
 }
@@ -1211,6 +1240,15 @@ FASTRUN uint8_t NT35510_t4x_p::readCommand(uint16_t const cmd) {
         // digitalToggleFast(2);
         data = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16;
 
+    } else if (_bus_width == 18) {
+        waitReadShiftStat(__LINE__);
+        // digitalToggleFast(2);
+        uint32_t dummy32 = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16;
+        waitReadShiftStat(__LINE__);
+        // digitalToggleFast(2);
+        data = _pflexio_imxrt->SHIFTBUF[_read_shifter];
+        //Serial.printf("Dummy 0x%x, data 0x%x\n", dummy32, data);
+
     } else {
         #if 1
         waitReadShiftStat(__LINE__);
@@ -1387,7 +1425,8 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
 
     uint32_t i;
     uint8_t MulBeatWR_BeatQty = _cnt_flexio_shifters * sizeof(uint32_t) / sizeof(uint8_t); // Number of beats = number of shifters * beats per shifter
-    if (_bus_width > 8)  MulBeatWR_BeatQty = MulBeatWR_BeatQty / 2;            // we use 16 bits at a time for T4...
+    if (_bus_width == 18)  MulBeatWR_BeatQty = _cnt_flexio_shifters;
+    else if (_bus_width > 8)  MulBeatWR_BeatQty = MulBeatWR_BeatQty / 2;            // we use 16 bits at a time for T4...
 
     /* Disable and reset FlexIO */
     _pflexio_imxrt->CTRL &= ~FLEXIO_CTRL_FLEXEN;
@@ -1483,7 +1522,7 @@ FASTRUN void NT35510_t4x_p::write_command_and_data(uint32_t cmd, uint8_t val) {
 
     DCHigh();
     microSecondDelay();
-    if (_bus_width == 16) {
+    if (_bus_width > 10) {  // 
         _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
         _pflexio_imxrt->SHIFTBUF[_write_shifter] = val;
         waitWriteShiftStat(__LINE__);
@@ -1515,7 +1554,7 @@ FASTRUN void NT35510_t4x_p::output_command_helper(uint32_t cmd) {
     microSecondDelay();
     /* Write command index */
     // This display commands are 16 bits so need handle.
-    if (_bus_width == 16) {
+    if (_bus_width > 10) {
         waitWriteShiftStat(__LINE__);
         _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
         _pflexio_imxrt->SHIFTBUF[_write_shifter] = cmd;
@@ -1621,12 +1660,20 @@ FASTRUN void NT35510_t4x_p::SglBeatWR_nPrm_16(uint32_t const cmd, const uint16_t
             }
         } else {
             if (_bus_width == 16) {
-                Serial.printf("\tBD:%u BW:%u length:%u\n", _bitDepth, _bus_width, length);
+                //Serial.printf("\tBD:%u BW:%u length:%u\n", _bitDepth, _bus_width, length);
                 while (length--) {
                     buf = *value++;
                     waitWriteShiftStat(__LINE__);
                     if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
                     _pflexio_imxrt->SHIFTBUF[_write_shifter] = buf;
+                }
+            } else if (_bus_width == 18) {
+                //Serial.printf("\tBD:%u BW:%u length:%u\n", _bitDepth, _bus_width, length);
+                while (length--) {
+                    buf = *value++;
+                    waitWriteShiftStat(__LINE__);
+                    if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                    _pflexio_imxrt->SHIFTBUF[_write_shifter] = color565To666(buf);
                 }
             } else {
                 while (length--) {
@@ -1674,7 +1721,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc, const char *psz_title) {
 
 NT35510_t4x_p *NT35510_t4x_p::dmaCallback = nullptr;
 DMAChannel NT35510_t4x_p::flexDma;
-DMASetting NT35510_t4x_p::_dmaSettings[9];
+DMASetting NT35510_t4x_p::_dmaSettings[12];
 
 FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *value, uint32_t length) {
     Serial.printf/*DBGPrintf*/("NT35510_t4x_p::MulBeatWR_nPrm_DMA(%x, %x, %u)\n", cmd, value, length);
@@ -1697,12 +1744,13 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
         // testing hack.
 
     bool reverse_bytes = true;
-    if (((_tpfb->dataWidth() == 24) && (_bus_width == 8)) || ((_tpfb->dataWidth() == 16) && (_bus_width == 16))) {
+    if (((_tpfb->dataWidth() == 24) && (_bus_width == 8)) || ((_tpfb->dataWidth() == 16) && (_bus_width == 16)) || (_bus_width == 18)) {
         _cnt_flexio_shifters = 1;
         reverse_bytes = false;
     }
 
-    FlexIO_Config_MultiBeat();
+    //if (_bus_width != 18) 
+        FlexIO_Config_MultiBeat();
 
     // Note we have at least 4 cases to consider:
     // a) color16 (RGB565) and 8 bit buss - Our norm up till now - two 8 bit transfers per pixel.
@@ -1720,6 +1768,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_DMA(uint32_t const cmd, const void *v
     MulBeatDataRemain = (uint16_t *)value + ((length - MulBeatCountRemain)); // pointer to the next unused byte (overflow if MulBeatCountRemain = 0)
     
     if (_bitDepth == 24) TotalSize = (length - MulBeatCountRemain) * 3;
+    else if (_bitDepth == 18) TotalSize = (length - MulBeatCountRemain) * 4;  // we store in 32 bit pixels...
     else TotalSize = (length - MulBeatCountRemain) * 2;
 
     if ((uint32_t)value >= 0x20200000u) {
@@ -2044,6 +2093,10 @@ void NT35510_t4x_p::write16BitColor(uint16_t color) {
             // we simply output the one word
             waitWriteShiftStat(__LINE__);
             _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
+        } else if (_bus_width == 18) {
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = color565To666(color);
+
         } else {
             waitWriteShiftStat(__LINE__);
             _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
@@ -2090,6 +2143,10 @@ void NT35510_t4x_p::write24BitColor(uint32_t color) {
             _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(b);
         }
     } else {
+        if (_bus_width == 18) {
+            waitWriteShiftStat(__LINE__);
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = color888To666(color);            
+        }
         color = color888To565(color); 
         if (_bus_width == 16) {
             // we simply output the one word
@@ -2130,15 +2187,43 @@ FASTRUN void NT35510_t4x_p::updateScreenFlexIO() {
     _previous_addr_x0 = 0xffff;
     _previous_addr_y0 = 0xffff;
 
+    Serial.printf("Called NT35510_t4x_p::updateScreenFlexIO %u %u\n", _tpfb->dataWidth(), _bus_width);
+
     if (_tpfb->dataWidth() == 24) {
         //writeRect24BPPFlexIO(0, 0, _width, _height, _width, (uint32_t*)_pfbtft);
         updateScreen24BPPFlexIO();
         return;
     }
 
+    if (_tpfb->dataWidth() == 18) {
+        setAddr(0, 0, _width - 1, _height -1);
+        FlexIO_Config_SnglBeat();
+        CSLow();
+        output_command_helper(NT35510_RAMWR);
+        microSecondDelay();
+        uint32_t *pfb = (uint32_t*)_pfbtft;
+        
+        uint32_t length = _width * _height;
+
+        while (length--) {
+            waitWriteShiftStat(__LINE__);
+            if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+            static uint8_t debug_count = 64;
+            if (debug_count) {
+                debug_count--;
+                Serial.printf("UDSF18: %x - r:%x g:%x b:%x\n", *pfb, *pfb >> 12, (*pfb >> 6) & 0x3f, *pfb & 0x3f);
+            }
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = *pfb++;
+        }
+        CSHigh();
+        /* Write the last pixel */
+        /*Wait for transfer to be completed */
+        waitTimStat(__LINE__);
+        microSecondDelay();
+        return;
+    }
  
-    //Serial.println("\tCalled NT35510_t4x_p::updateScreenFlexIO");
-    if (/*(_bitDepth != 24) && */(_bus_width == 16)) {
+    if (_bus_width == 16) {
         _pflexio_imxrt->SHIFTERR = _write_shifter_mask | _read_shifter_mask; // clear out any previous state
         FlexIO_Config_SnglBeat();
         CSLow();
@@ -2291,31 +2376,24 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
             }
         }
     } else {
-        while (length-- > 1) {
-            waitWriteShiftStat(__LINE__);
-            if (_bus_width == 16) {
-                _pflexio_imxrt->SHIFTBUF[_write_shifter] = color; 
-            } else {
+        if (_bus_width > 10) {
+            uint32_t color32 = (_bus_width == 18)? color565To666(color) : color;
+            while (length-- ) {
+                waitWriteShiftStat(__LINE__);
+                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+                _pflexio_imxrt->SHIFTBUF[_write_shifter] = color32; 
+            }
+        } else {
+            while (length) {
+                waitWriteShiftStat(__LINE__);
                 _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
                 waitWriteShiftStat(__LINE__);
+                if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
                 _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
             }
         }
     }
-    /* Write the last pixel */
-    waitWriteShiftStat(__LINE__);
-    if (_bus_width == 16) {
-        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
-        _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
-    } else {
-        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
-
-        waitWriteShiftStat(__LINE__);
-        _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
-        _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color & 0xFF);
-    }
-
     /*Wait for transfer to be completed */
     waitTimStat(__LINE__);
     CSHigh();
@@ -2382,6 +2460,14 @@ bool NT35510_t4x_p::writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_
                 _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color);
             }
         }
+    } else if (_bitDepth == 18) {
+        while (length-- > 0) {
+            uint32_t color = color888To666(*pixels++);
+            waitWriteShiftStat(__LINE__);
+            if (length == 0)  _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = color;
+        }
+
     } else {
         while (length-- > 0) {
             uint32_t pixel = *pixels++;
@@ -2417,7 +2503,7 @@ void NT35510_t4x_p::fillRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t
     if (length == 0) return ;
 
     // If we are not 24 bit mode just call of to the 16 bit version with converted color.
-    if (_bitDepth != 24) {
+    if ((_bitDepth != 24) && (_bus_width != 18)) {
         uint16_t clr565 = color565(color >> 16, color >> 8, color);
         fillRectFlexIO(x, y, w, h, clr565);
         return;
@@ -2450,6 +2536,14 @@ void NT35510_t4x_p::fillRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t
             _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
             _pflexio_imxrt->SHIFTBUF[_write_shifter] = ((color & 0xff) << 8);
         }
+    } else if (_bus_width == 18) {
+        color = color888To666(color);
+        while (length-- ) {
+            waitWriteShiftStat(__LINE__);
+            if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+            _pflexio_imxrt->SHIFTBUF[_write_shifter] = color; 
+        }
+
     } else {
         while (length-- > 0) {
             waitWriteShiftStat(__LINE__);
@@ -2524,24 +2618,22 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
         // digitalToggleFast(2);
         // Serial.printf("\tD%u=%x\n", i, dummy);
     }
-    /*Wait for transfer to be completed */
+    int count_pixels = w * h;
 
-    //if ((_display_name != ILI9488) && (_display_name != HX8357D)) {
-        // 16 bit mode
-     //   int count_pixels = w * h;
-     //   uint8_t *pc = (uint8_t *)pcolors;
-     //   while (count_pixels--) {
-     //       waitReadShiftStat(__LINE__);
-     //       // digitalToggleFast(2);
-     //       uint8_t b1 = read_shiftbuf_byte();
+    if (_bus_width == 18) {
+        while (count_pixels--) {
+            uint32_t color18 =  _pflexio_imxrt->SHIFTBUF[_read_shifter];
+            *pcolors++ = color666To565(color18);
+            //#ifdef DEBUG
+            static uint8_t debug_count = 50;
+            if (debug_count) {
+                debug_count--;
+                Serial.printf("RRFIO %x %x\n", color18, pcolors[-1]);
+            }
+            //#endif
+        }
+    } else {
 
-     //       waitReadShiftStat(__LINE__);
-     //       // digitalToggleFast(2);
-     //       *pc++ = read_shiftbuf_byte();
-     //       *pc++ = b1;
-     //   }
-    //} else {
-        int count_pixels = w * h;
         while (count_pixels--) {
             uint8_t r, g, b;
             waitReadShiftStat(__LINE__);
@@ -2570,8 +2662,7 @@ void NT35510_t4x_p::readRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
             }
             #endif
         }
-    //}
-
+    }
     CSHigh();
     microSecondDelay();
     // Set FlexIO back to Write mode
@@ -2761,7 +2852,7 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
                     uint8_t *pb = (uint8_t*)_irq_readPtr;
                     for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                         //digitalToggleFast(3);
-                        uint32_t data = _irq_readPtr[i];
+                        //uint32_t data = _irq_readPtr[i];
                         _pflexio_imxrt->SHIFTBUFBYS[i] = (uint32_t)(generate_output_word(pb[2 * i]) << 16) | (uint32_t)(generate_output_word(pb[i * 2 + 1]) << 0);
                     }
                     pb += (2 * _cnt_flexio_shifters);

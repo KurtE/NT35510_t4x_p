@@ -18,9 +18,21 @@
 
 #define NT35510X NT35510
 #define NT35510X_SPEED_MHZ 28
+#define BUS_WIDTH 18
+#define BIT_DEPTH 18
+
+inline uint32_t color565To666(uint16_t color) {
+    //        G and B                        R
+    return ((color & 0x07FF) << 1) | ((color & 0xF800) << 2);
+}
+
+inline uint16_t color666To565(uint32_t color) {
+    //        G and B                        R
+    return ((color & 0x0FFF) >> 1) | ((color & 0x3E000) >> 2);
+}
 
 
-#define FRAME_BUFFER_PIXEL_SIZE 2  // 2 or 3 for allocations...
+//#define FRAME_BUFFER_PIXEL_SIZE 2  // 2 or 3 for allocations...
 
 #include <MemoryHexDump.h>
 
@@ -52,6 +64,9 @@ uint8_t *tft_frame_buffer = nullptr;
 uint16_t palette[256];  // Should probably be 256, but I don't use many colors...
 uint16_t pixel_data[12000];
 
+static const uint16_t color_bands[] = { NT35510_RED, NT35510_GREEN, NT35510_BLUE, NT35510_BLACK,
+                                        NT35510_WHITE, NT35510_YELLOW, NT35510_CYAN, NT35510_PINK };
+
 #define ORIGIN_TEST_X 50
 #define ORIGIN_TEST_Y 50
 
@@ -69,7 +84,11 @@ NT35510_t4x_p tft = NT35510_t4x_p(10, 11, 12);  //(dc, cs, rst)
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
 #undef ROTATION
 #define ROTATION 3
+#if BUS_WIDTH == 18
+NT35510_t4x_p tft = NT35510_t4x_p(55, 59, 54);  //(dc, cs, rst)
+#else
 NT35510_t4x_p tft = NT35510_t4x_p(55, 53, 54);  //(dc, cs, rst)
+#endif
 #else
 NT35510_t4x_p tft = NT35510_t4x_p(4, 5, 3);  //(dc, cs, rst)
 #endif
@@ -92,7 +111,7 @@ void setup() {
     digitalWrite(TFT_TOUCH_CS, HIGH);
 #endif
 
-/*
+    /*
    * begin(Dispalay type, baud)
    * Display type is associated with the the diplay
    * init configurations:
@@ -101,20 +120,24 @@ void setup() {
    * begin defaults to ILI9488 and 20Mhz:
    *     lcd.begin();
   */
-// Begin optionally change FlexIO pins.
-//    WRITE, READ, D0, [D1 - D7]
-//    tft.setFlexIOPins(7, 8);
-//    tft.setFlexIOPins(7, 8, 40);
-//    tft.setFlexIOPins(7, 8, 40, 41, 42, 43, 44, 45, 6, 9);
-//tft.setFlexIOPins(7, 8);
+    // Begin optionally change FlexIO pins.
+    //    WRITE, READ, D0, [D1 - D7]
+    //    tft.setFlexIOPins(7, 8);
+    //    tft.setFlexIOPins(7, 8, 40);
+    //    tft.setFlexIOPins(7, 8, 40, 41, 42, 43, 44, 45, 6, 9);
+    //tft.setFlexIOPins(7, 8);
+    uint32_t frame_buffer_size = tft.getRequiredframeBufferSize(BIT_DEPTH);
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(frame_buffer_size + 36);
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
     Serial.print("DEVBRD5 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(frame_buffer_size + 36);
     Serial.printf("FB Alloc:%p ", tft_frame_buffer);
-    tft.setBusWidth(16);
+    tft.setBusWidth(BUS_WIDTH);
+#if BUS_WIDTH == 18
+    tft.setFlexIOPins(56, 60, 40);
+#endif
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
@@ -126,33 +149,27 @@ void setup() {
     set_psram_clock(32);
 
 
-    tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * FRAME_BUFFER_PIXEL_SIZE + 36);
+    tft_frame_buffer = (uint8_t *)extmem_malloc(frame_buffer_size + 36);
 
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
 #ifdef ARDUINO_TEENSY41
     pinMode(24, INPUT_PULLDOWN);
-    delay(10); // plenty of time
+    delay(10);  // plenty of time
     // if the user tied this pin to 3.3v then try 16 bit bus...
     if (digitalRead(24)) tft.setBusWidth(16);
 #endif
 
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
-    #if FRAME_BUFFER_PIXEL_SIZE > 2
-    tft.setBitDepth(24);
-    #endif
+    tft.setBitDepth(BIT_DEPTH);
 
     tft.displayInfo();
 
     // Frame buffer will not fit work with malloc see if
     if (tft_frame_buffer) {
-        Serial.printf("&&& Set FrameBuffer(%d): %p\n", FRAME_BUFFER_PIXEL_SIZE, tft_frame_buffer);
-#if FRAME_BUFFER_PIXEL_SIZE > 2
-        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 31) & ~((uintptr_t)(31))), 24);
-#else
-        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 31) & ~((uintptr_t)(31))));
-#endif
+        Serial.printf("&&& Set FrameBuffer(%d): %p\n", frame_buffer_size, tft_frame_buffer);
+        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 31) & ~((uintptr_t)(31))), BIT_DEPTH);
     }
     tft.setRotation(ROTATION);
     tft.fillScreen(NT35510_BLACK);
@@ -171,8 +188,13 @@ void setup() {
         delay(500);
         if (!tft.useFrameBuffer(true)) Serial.println("Use Frame buffer failed");
         tft.fillScreen(NT35510_YELLOW);
+        for (uint8_t i = 0; i < (sizeof(color_bands) / sizeof(color_bands[0])); i++) {
+            Serial.printf("%u: %x %x\n", i, color_bands[i], color565To666(color_bands[i]));
+            tft.drawPixel(i, 0, color_bands[i]);
+        }
         tft.updateScreen();
-        delay(500);
+        WaitForUserInput();
+        //delay(500);
         tft.fillScreen(NT35510_PINK);
         tft.updateScreen();
         WaitForUserInput();
@@ -180,14 +202,17 @@ void setup() {
         tft.fillScreenVGradient(NT35510_BLACK, NT35510_LIGHTGREY);
         tft.updateScreen();
         WaitForUserInput();
-        tft.fillScreen(NT35510_RED);
+        tft.fillScreen(NT35510_GREEN);
+        for (uint8_t i = 0; i < (sizeof(color_bands) / sizeof(color_bands[0])); i++) {
+            Serial.printf("%u: %x %x\n", i, color_bands[i], color565To666(color_bands[i]));
+            tft.drawPixel(i, 0, color_bands[i]);
+        }
         tft.updateScreenAsync();
+        //tft.updateScreen();
         delay(250);
         tft.readRectFlexIO(0, 0, tft.width(), 2, pixel_data);
         MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nFrame Buffer\n");
         MemoryHexDump(Serial, pixel_data, 128, true, "\nReadRect\n");
-
-
     }
     WaitForUserInput();
     //
@@ -427,9 +452,9 @@ void drawTestScreen() {
     uint32_t *pixel32_data = (uint32_t *)pixel_data;
     for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0xff, 0xff, 0);
     tft.writeRect24BPP(500 + 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
-    memset(pixel_data, 0, BAND_WIDTH * BAND_HEIGHT * 2);    
+    memset(pixel_data, 0, BAND_WIDTH * BAND_HEIGHT * 2);
     tft.readRect(500 + 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel_data);
-    MemoryHexDump(Serial,pixel_data, BAND_WIDTH * BAND_HEIGHT * 2, true, "\nread back\n");
+    MemoryHexDump(Serial, pixel_data, BAND_WIDTH * BAND_HEIGHT * 2, true, "\nread back\n");
 
 #if 1
     for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0x40, 0x40, 0x40);
@@ -445,8 +470,8 @@ void drawTestScreen() {
     //    arm_dcache_flush(tft.getFrameBuffer(), tft.width() * tft.height() * 3);
     //    MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
     //}
-//    uint8_t *pb = (uint8_t*)tft.getFrameBuffer();
-//    for (int i=0; i < 256;i++) *pb++ = i;
+    //    uint8_t *pb = (uint8_t*)tft.getFrameBuffer();
+    //    for (int i=0; i < 256;i++) *pb++ = i;
     if (use_fb)
         MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
     if (use_dma) {
