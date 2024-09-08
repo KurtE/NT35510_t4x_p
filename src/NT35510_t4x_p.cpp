@@ -1493,7 +1493,7 @@ FASTRUN void NT35510_t4x_p::FlexIO_Config_MultiBeat() {
     //print_flexio_debug_data(_pFlex, _flexio_timer, _write_shifter, _read_shifter);
 
    // configure interrupts
-    if (hw->shifters_dma_channel[SHIFTER_DMA_REQUEST] == 0xff) {
+    if (_fForceIRQ || (hw->shifters_dma_channel[SHIFTER_DMA_REQUEST] == 0xff)) {
         DBGPrintf("NT35510_t4x_p::FlexIO_Config_MultiBeat() - IRQ mode\n");
         attachInterruptVector(hw->flex_irq, flexio_ISR);
         NVIC_ENABLE_IRQ(hw->flex_irq);
@@ -2208,11 +2208,13 @@ FASTRUN void NT35510_t4x_p::updateScreenFlexIO() {
         while (length--) {
             waitWriteShiftStat(__LINE__);
             if (length == 0) _pflexio_imxrt->TIMSTAT |= _flexio_timer_mask;
+            #ifdef DEBUG
             static uint8_t debug_count = 64;
             if (debug_count) {
                 debug_count--;
                 Serial.printf("UDSF18: %x - r:%x g:%x b:%x\n", *pfb, *pfb >> 12, (*pfb >> 6) & 0x3f, *pfb & 0x3f);
             }
+            #endif
             _pflexio_imxrt->SHIFTBUF[_write_shifter] = *pfb++;
         }
         CSHigh();
@@ -2679,7 +2681,7 @@ bool NT35510_t4x_p::writeRectAsyncFlexIO(int16_t x, int16_t y, int16_t w, int16_
 {
     Serial.println("*** writeRectAsyncFlexIO ***");
     // Start off only supporting shifters with DMA Requests
-    if (hw->shifters_dma_channel[SHIFTER_DMA_REQUEST] != 0xff) {
+    if (!_fForceIRQ && (hw->shifters_dma_channel[SHIFTER_DMA_REQUEST] != 0xff)) {
         pushPixels16bitDMA(pcolors, x, y, x+w-1, y + h - 1);
     } else {
         // FlexIO3 IRQ version.
@@ -2729,6 +2731,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
     WR_AsyncTransferDone = false;
     uint32_t bytes = length*2U;
     if (_bitDepth == 24) bytes = length * 3;
+    else if (_bitDepth == 18) bytes = length * 4;
 
     _irq_bytes_per_shifter = (_bus_width != 10) ? 4 : 2;
     _irq_bytes_per_burst = _irq_bytes_per_shifter * _cnt_flexio_shifters;
@@ -2749,6 +2752,7 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
     Serial.printf("START::_irq_bursts_to_complete: %d _irq_bytes_remaining: %d remainder:%u\n", _irq_bursts_to_complete, _irq_bytes_remaining, remainder);
   
     uint8_t beats = _cnt_flexio_shifters * ((_bus_width == 8) ? 4 : 2);
+    if (_bus_width == 18) beats = _cnt_flexio_shifters;
     _pflexio_imxrt->TIMCMP[_flexio_timer] = ((beats * 2U - 1) << 8) | (_baud_div / 2U - 1U);
 
     _pflexio_imxrt->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
@@ -2765,10 +2769,10 @@ FASTRUN void NT35510_t4x_p::MulBeatWR_nPrm_IRQ(uint32_t const cmd,  const void *
 }
 
 FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
-    //digitalWriteFast(2, HIGH);
+    digitalWriteFast(2, HIGH);
     DBGPrintf("%x %x %u %u ", _pflexio_imxrt->TIMSTAT, _pflexio_imxrt->SHIFTSTAT, _irq_bursts_to_complete, _irq_bytes_remaining);
   
- if (_pflexio_imxrt->TIMSTAT & _flexio_timer_mask) { // interrupt from end of burst
+    if (_pflexio_imxrt->TIMSTAT & _flexio_timer_mask) { // interrupt from end of burst
         //Serial.write('T');
         _pflexio_imxrt->TIMSTAT = _flexio_timer_mask; // clear timer interrupt signal
         _irq_bursts_to_complete--;
@@ -2841,7 +2845,8 @@ FASTRUN void NT35510_t4x_p::flexIRQ_Callback(){
                         _pflexio_imxrt->SHIFTBUFBYS[i] = ((data >> 16) & 0xFFFF) | ((data << 16) & 0xFFFF0000);
                     }
                     _irq_readPtr += _cnt_flexio_shifters;
-                } else if (_bus_width == 16) {
+                } else if ((_bus_width == 16) || (_bus_width == 18)) {
+                    //Serial.print(".");
                     for (int i = _cnt_flexio_shifters - 1; i >= 0; i--) {
                         //digitalToggleFast(3);
                         uint32_t data = _irq_readPtr[i];

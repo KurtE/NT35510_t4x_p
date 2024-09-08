@@ -194,6 +194,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     
     // Called by GFX to do updateScreenAsync and new writeRectAsync(;
     bool writeRectAsyncFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors);
+    bool _fForceIRQ = false;
+    void forceRectAsyncToUseIRQ(bool fForceIRQ) {_fForceIRQ = fForceIRQ;}
     bool writeRectAsyncActiveFlexIO();
 
     // void pushPixels16bitTearing(uint16_t * pcolors, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2 );
