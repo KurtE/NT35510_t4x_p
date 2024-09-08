@@ -53,8 +53,10 @@
 // common settings for most setups
 //-----------------------------------------------------------------------------
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 20
-#define BUS_WIDTH 16
+#define NT35510X_SPEED_MHZ 28
+#define BUS_WIDTH 18
+#define BIT_DEPTH 18
+#define TFT_ROTATION 1
 
 #ifdef ARDUINO_TEENSY41
 #define TFT_DC 10
@@ -65,17 +67,22 @@
 #define TFT_CS 1
 #define TFT_RST 2
 #elif defined(ARDUINO_TEENSY_DEVBRD4) || defined(ARDUINO_TEENSY_DEVBRD5)
-extern "C" bool sdram_begin(uint8_t external_sdram_size, uint8_t clock, uint8_t useDQS);
-#if defined(ARDUINO_TEENSY_DEVBRD4)
-#define TFT_DC 10
-#define TFT_CS 11
-#define TFT_RST 12
-#else //DB5
-#define TFT_DC 55
-#define TFT_CS 53
-#define TFT_RST 54
-#endif
-
+    extern "C" bool sdram_begin(uint8_t external_sdram_size, uint8_t clock, uint8_t useDQS);
+    #if defined(ARDUINO_TEENSY_DEVBRD4)
+        #define TFT_DC 10
+        #define TFT_CS 11
+        #define TFT_RST 12
+    #else //DB5
+        #undef TFT_ROTATION
+        #define TFT_ROTATION 3
+        #define TFT_DC 55
+        #define TFT_RST 54
+        #if BUS_WIDTH == 18
+            #define TFT_CS 59
+        #else
+            #define TFT_CS 53
+        #endif
+    #endif
 #else  // micromod?
 #define TFT_DC 4
 #define TFT_CS 5
@@ -224,9 +231,14 @@ void setup(void) {
     tft.setBusWidth(BUS_WIDTH);
     #endif
 
+#if BUS_WIDTH == 18
+    tft.setFlexIOPins(56, 60, 40);
+    //tft.forceRectAsyncToUseIRQ(true);
+#endif
+
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
-    tft.setBitDepth(24);
-    tft.setRotation(1);
+    tft.setBitDepth(BIT_DEPTH);
+    tft.setRotation(TFT_ROTATION);
 
     tft.fillScreen(RED);
     delay(500);
@@ -237,21 +249,22 @@ void setup(void) {
 
     g_tft_width = tft.width();
     g_tft_height = tft.height();
+    uint32_t frame_buffer_size = tft.getRequiredframeBufferSize(BIT_DEPTH);
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
     sdram_begin(32, 166, 1);
-    tft_frame_buffer = (uint16_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint16_t *)sdram_malloc(frame_buffer_size + 36);
     frame_buffer_RGB888 = (uint32_t *)sdram_malloc(tft.width() * tft.height() * 4 + 32);
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
     sdram_begin(32, 166, 1);
     Serial.print("DEVBRD5 - ");
-    tft_frame_buffer = (uint16_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint16_t *)sdram_malloc(frame_buffer_size + 36);
     frame_buffer_RGB888 = (uint32_t *)sdram_malloc(tft.width() * tft.height() * 4 + 32);
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
     Serial.print("Teensy4.1 - ");
-    tft_frame_buffer = (uint16_t *)extmem_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint16_t *)extmem_malloc(frame_buffer_size + 36);
     frame_buffer_RGB888 = (uint32_t *)extmem_malloc(tft.width() * tft.height() * 4 + 32);
 #endif
     if (tft_frame_buffer) tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))));

@@ -26,6 +26,8 @@
 #define DISPLAY_D14 26
 #define DISPLAY_D15 27
 
+#define DISPLAY_D16 8
+#define DISPLAY_D17 7
 
 #elif defined(ARDUINO_TEENSY40)
 // BUGBUG Nibble mode
@@ -64,6 +66,10 @@
 #define DISPLAY_D13 7	//		 B1_01 FlexIO2:17 |
 #define DISPLAY_D14 49	//		 B0_02 FlexIO2:18 |
 #define DISPLAY_D15 50	//		 B0_03 FlexIO2:19 D15
+
+#define DISPLAY_D16 51	//		 FlexIO2:20  // screwed up with RD pin...
+#define DISPLAY_D17 52	//		 FlexIO2:21  // And CS pin
+
 
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
 #define DISPLAY_RD 52	// FlexIO2:20: RD

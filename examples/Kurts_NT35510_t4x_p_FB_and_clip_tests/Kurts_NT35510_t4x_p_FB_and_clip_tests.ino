@@ -137,6 +137,7 @@ void setup() {
     tft.setBusWidth(BUS_WIDTH);
 #if BUS_WIDTH == 18
     tft.setFlexIOPins(56, 60, 40);
+    tft.forceRectAsyncToUseIRQ(true);
 #endif
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
