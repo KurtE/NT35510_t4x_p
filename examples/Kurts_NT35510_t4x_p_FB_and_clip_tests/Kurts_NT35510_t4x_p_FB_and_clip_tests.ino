@@ -17,8 +17,22 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 30
+#define NT35510X_SPEED_MHZ 28
+#define BUS_WIDTH 18
+#define BIT_DEPTH 18
 
+inline uint32_t color565To666(uint16_t color) {
+    //        G and B                        R
+    return ((color & 0x07FF) << 1) | ((color & 0xF800) << 2);
+}
+
+inline uint16_t color666To565(uint32_t color) {
+    //        G and B                        R
+    return ((color & 0x0FFF) >> 1) | ((color & 0x3E000) >> 2);
+}
+
+
+//#define FRAME_BUFFER_PIXEL_SIZE 2  // 2 or 3 for allocations...
 
 #include <MemoryHexDump.h>
 
@@ -47,6 +61,11 @@ uint8_t use_clip_rect = 0;
 uint8_t use_set_origin = 0;
 uint8_t use_fb = 0;
 uint8_t *tft_frame_buffer = nullptr;
+uint16_t palette[256];  // Should probably be 256, but I don't use many colors...
+uint16_t pixel_data[12000];
+
+static const uint16_t color_bands[] = { NT35510_RED, NT35510_GREEN, NT35510_BLUE, NT35510_BLACK,
+                                        NT35510_WHITE, NT35510_YELLOW, NT35510_CYAN, NT35510_PINK };
 
 #define ORIGIN_TEST_X 50
 #define ORIGIN_TEST_Y 50
@@ -54,13 +73,22 @@ uint8_t *tft_frame_buffer = nullptr;
 #ifdef ARDUINO_TEENSY41
 extern "C" {
     extern uint8_t external_psram_size;
+    extern void set_psram_clock(int speed_mhz);
 }
 
 NT35510_t4x_p tft = NT35510_t4x_p(10, 8, 9);  //(dc, cs, rst)
 #elif ARDUINO_TEENSY40
 NT35510_t4x_p tft = NT35510_t4x_p(0, 1, 2);  //(dc, cs, rst)
-#elif defined(ARDUINO_TEENSY_DEVBRD4) || defined(ARDUINO_TEENSY_DEVBRD5)
+#elif defined(ARDUINO_TEENSY_DEVBRD4)
 NT35510_t4x_p tft = NT35510_t4x_p(10, 11, 12);  //(dc, cs, rst)
+#elif defined(ARDUINO_TEENSY_DEVBRD5)
+#undef ROTATION
+#define ROTATION 3
+#if BUS_WIDTH == 18
+NT35510_t4x_p tft = NT35510_t4x_p(55, 59, 54);  //(dc, cs, rst)
+#else
+NT35510_t4x_p tft = NT35510_t4x_p(55, 53, 54);  //(dc, cs, rst)
+#endif
 #else
 NT35510_t4x_p tft = NT35510_t4x_p(4, 5, 3);  //(dc, cs, rst)
 #endif
@@ -83,7 +111,7 @@ void setup() {
     digitalWrite(TFT_TOUCH_CS, HIGH);
 #endif
 
-/*
+    /*
    * begin(Dispalay type, baud)
    * Display type is associated with the the diplay
    * init configurations:
@@ -92,42 +120,57 @@ void setup() {
    * begin defaults to ILI9488 and 20Mhz:
    *     lcd.begin();
   */
-// Begin optionally change FlexIO pins.
-//    WRITE, READ, D0, [D1 - D7]
-//    tft.setFlexIOPins(7, 8);
-//    tft.setFlexIOPins(7, 8, 40);
-//    tft.setFlexIOPins(7, 8, 40, 41, 42, 43, 44, 45, 6, 9);
-//tft.setFlexIOPins(7, 8);
+    // Begin optionally change FlexIO pins.
+    //    WRITE, READ, D0, [D1 - D7]
+    //    tft.setFlexIOPins(7, 8);
+    //    tft.setFlexIOPins(7, 8, 40);
+    //    tft.setFlexIOPins(7, 8, 40, 41, 42, 43, 44, 45, 6, 9);
+    //tft.setFlexIOPins(7, 8);
+    uint32_t frame_buffer_size = tft.getRequiredframeBufferSize(BIT_DEPTH);
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(frame_buffer_size + 36);
 #elif defined(ARDUINO_TEENSY_DEVBRD5)
     Serial.print("DEVBRD5 - ");
-    tft_frame_buffer = (uint8_t *)sdram_malloc(tft.width() * tft.height() * 2 + 32);
+    tft_frame_buffer = (uint8_t *)sdram_malloc(frame_buffer_size + 36);
+    Serial.printf("FB Alloc:%p ", tft_frame_buffer);
+    tft.setBusWidth(BUS_WIDTH);
+#if BUS_WIDTH == 18
+    tft.setFlexIOPins(56, 60, 40);
+    tft.forceRectAsyncToUseIRQ(true);
+#endif
 #elif defined(ARDUINO_TEENSY_MICROMOD)
     Serial.print("Micromod - ");
 #elif defined(ARDUINO_TEENSY41)
     Serial.print("Teensy4.1 - ");
     Serial.printf("EXTMEM size: %u ", external_psram_size);
 
-    tft_frame_buffer = (uint8_t *)extmem_malloc(tft.width() * tft.height() * 2 + 32);
+    // Try to bump up PSRAM Speed:
+    //update_psram_speed(130);
+    set_psram_clock(32);
+
+
+    tft_frame_buffer = (uint8_t *)extmem_malloc(frame_buffer_size + 36);
+
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
 #ifdef ARDUINO_TEENSY41
-
-    tft.setBusWidth(16);
+    pinMode(24, INPUT_PULLDOWN);
+    delay(10);  // plenty of time
+    // if the user tied this pin to 3.3v then try 16 bit bus...
+    if (digitalRead(24)) tft.setBusWidth(16);
 #endif
 
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
-    tft.setBitDepth(16);
+    tft.setBitDepth(BIT_DEPTH);
 
     tft.displayInfo();
 
     // Frame buffer will not fit work with malloc see if
     if (tft_frame_buffer) {
-        Serial.printf("&&& Set FrameBuffer: %p\n", tft_frame_buffer);
-        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 32) & ~((uintptr_t)(31))));
+        Serial.printf("&&& Set FrameBuffer(%d): %p\n", frame_buffer_size, tft_frame_buffer);
+        tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 31) & ~((uintptr_t)(31))), BIT_DEPTH);
     }
     tft.setRotation(ROTATION);
     tft.fillScreen(NT35510_BLACK);
@@ -139,25 +182,80 @@ void setup() {
     tft.fillScreen(NT35510_GREEN);
     delay(500);
     tft.fillScreen(NT35510_BLUE);
-
+    delay(500);
+    tft.fillScreenHGradient(NT35510_BLACK, NT35510_GREEN);
+    tft.onCompleteCB(&frame_complete_callback);
     if (tft_frame_buffer) {
         delay(500);
         if (!tft.useFrameBuffer(true)) Serial.println("Use Frame buffer failed");
         tft.fillScreen(NT35510_YELLOW);
+        for (uint8_t i = 0; i < (sizeof(color_bands) / sizeof(color_bands[0])); i++) {
+            Serial.printf("%u: %x %x\n", i, color_bands[i], color565To666(color_bands[i]));
+            tft.drawPixel(i, 0, color_bands[i]);
+        }
         tft.updateScreen();
-        delay(500);
+        WaitForUserInput();
+        //delay(500);
         tft.fillScreen(NT35510_PINK);
         tft.updateScreen();
-        delay(500);
+        WaitForUserInput();
+        //delay(500);
+        tft.fillScreenVGradient(NT35510_BLACK, NT35510_LIGHTGREY);
+        tft.updateScreen();
+        WaitForUserInput();
+        tft.fillScreen(NT35510_GREEN);
+        for (uint8_t i = 0; i < (sizeof(color_bands) / sizeof(color_bands[0])); i++) {
+            Serial.printf("%u: %x %x\n", i, color_bands[i], color565To666(color_bands[i]));
+            tft.drawPixel(i, 0, color_bands[i]);
+        }
+        tft.updateScreenAsync();
+        //tft.updateScreen();
+        delay(250);
+        tft.readRectFlexIO(0, 0, tft.width(), 2, pixel_data);
+        MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nFrame Buffer\n");
+        MemoryHexDump(Serial, pixel_data, 128, true, "\nReadRect\n");
     }
-
     WaitForUserInput();
     //
     //  button.initButton(&tft, 200, 125, 100, 40, NT35510_GREEN, NT35510_YELLOW, NT35510_RED, "UP", 1, 1);
-    tft.onCompleteCB(&frame_complete_callback);
 
     drawTestScreen();
 }
+
+#if 0  // def ARDUINO_TEENSY41 - have version in our variant stuff
+void update_psram_speed(int speed_mhz) {
+    // What clocks exist:
+    static const int flexspio2_clock_speeds[] = { 396, 720, 665, 528 };
+
+    // See what the closest setting might be:
+    uint8_t clk_save, divider_save;
+    int min_delta = speed_mhz;
+    for (uint8_t clk = 0; clk < 4; clk++) {
+        uint8_t divider = (flexspio2_clock_speeds[clk] + (speed_mhz / 2)) / speed_mhz;
+        int delta = abs(speed_mhz - flexspio2_clock_speeds[clk] / divider);
+        if ((delta < min_delta) && (divider < 8)) {
+            min_delta = delta;
+            clk_save = clk;
+            divider_save = divider;
+        }
+    }
+
+    // first turn off FLEXSPI2
+    CCM_CCGR7 &= ~CCM_CCGR7_FLEXSPI2(CCM_CCGR_ON);
+
+    divider_save--; // 0 biased.
+    Serial.printf("Update FLEXSPI2 speed: %u clk:%u div:%u Actual:%u\n", speed_mhz, clk_save, divider_save,
+        flexspio2_clock_speeds[clk_save]/ (divider_save + 1));
+
+    // Set the clock settings.
+    CCM_CBCMR = (CCM_CBCMR & ~(CCM_CBCMR_FLEXSPI2_PODF_MASK | CCM_CBCMR_FLEXSPI2_CLK_SEL_MASK))
+                | CCM_CBCMR_FLEXSPI2_PODF(divider_save) | CCM_CBCMR_FLEXSPI2_CLK_SEL(clk_save);  // 120?
+
+    // Turn FlexSPI2 clock back on
+    CCM_CCGR7 |= CCM_CCGR7_FLEXSPI2(CCM_CCGR_ON);
+}
+#endif
+
 
 void frame_complete_callback() {
     Serial.println("\n*** Frame Complete Callback ***");
@@ -192,286 +290,48 @@ void SetupOrClearClipRectAndOffsets() {
 }
 
 
-uint16_t palette[256];  // Should probably be 256, but I don't use many colors...
-uint16_t pixel_data[12000];
-const uint8_t pict1bpp[] = { 0xff, 0xff, 0xc0, 0x03, 0xa0, 0x05, 0x90, 0x9, 0x88, 0x11, 0x84, 0x21, 0x82, 0x41, 0x81, 0x81,
-                             0x81, 0x81, 0x82, 0x41, 0x84, 0x21, 0x88, 0x11, 0x90, 0x09, 0xa0, 0x05, 0xc0, 0x03, 0xff, 0xff };
+const uint8_t pict1bpp[] = {
+    0xff, 0xff, 0xc0, 0x03, 0xa0, 0x05, 0x90, 0x9, 0x88, 0x11, 0x84, 0x21, 0x82, 0x41, 0x81, 0x81,
+    0x81, 0x81, 0x82, 0x41, 0x84, 0x21, 0x88, 0x11, 0x90, 0x09, 0xa0, 0x05, 0xc0, 0x03, 0xff, 0xff
+};
+
 const uint8_t pict2bpp[] = {
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
-    0xff,
-    0xff,
-    0x00,
-    0x00,
-    0x55,
-    0x55,
-    0xaa,
-    0xaa,
+    0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff,
+    0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00,
+    0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55,
+    0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa,
+    0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff,
+    0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00,
+    0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55,
+    0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa, 0xff, 0xff, 0x00, 0x00, 0x55, 0x55, 0xaa, 0xaa
 };
 const uint8_t pict4bpp[] = {
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x22,
-    0x22,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x22,
-    0x22,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x33,
-    0x33,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x33,
-    0x33,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x33,
-    0x33,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x33,
-    0x33,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x22,
-    0x22,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x22,
-    0x22,
-    0x22,
-    0x22,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x00,
-    0x00,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x11,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x00, 0x00, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x00,
+    0x00, 0x11, 0x22, 0x22, 0x22, 0x22, 0x11, 0x00, 0x00, 0x11, 0x22, 0x22, 0x22, 0x22, 0x11, 0x00,
+    0x00, 0x11, 0x22, 0x33, 0x33, 0x22, 0x11, 0x00, 0x00, 0x11, 0x22, 0x33, 0x33, 0x22, 0x11, 0x00,
+    0x00, 0x11, 0x22, 0x33, 0x33, 0x22, 0x11, 0x00, 0x00, 0x11, 0x22, 0x33, 0x33, 0x22, 0x11, 0x00,
+    0x00, 0x11, 0x22, 0x22, 0x22, 0x22, 0x11, 0x00, 0x00, 0x11, 0x22, 0x22, 0x22, 0x22, 0x11, 0x00,
+    0x00, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x00, 0x00, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
 
 
-uint16_t colors[] = { NT35510_BLUE, NT35510_RED, NT35510_GREEN, NT35510_BLACK, NT35510_WHITE, NT35510_YELLOW, NT35510_CYAN, NT35510_PINK };
-uint8_t color_index = -1;
 void drawTestScreen() {
     Serial.printf("Use FB: %d ", use_fb);
     Serial.flush();
     tft.useFrameBuffer(use_fb);
     SetupOrClearClipRectAndOffsets();
     uint32_t start_time = millis();
-    color_index++;
-    if (color_index == (sizeof(colors) / sizeof(colors[0]))) color_index = 0;
-    tft.fillScreen(colors[color_index]);
+    tft.fillScreen(use_fb ? (use_dma ? NT35510_BLUE : NT35510_RED) : NT35510_BLACK);
+    //#if FRAME_BUFFER_PIXEL_SIZE > 2
+    //tft.fillRect24BPP(0, 0, tft.width(), tft.height(), use_fb ? tft.color888(0xff, 0, 0) : 0);
+    //#else
     //tft.fillScreen(use_fb ? NT35510_RED : NT35510_BLACK);
+    //#endif
     //tft.setFont(Inconsolata_60);
+    MemoryHexDump(Serial, tft.getFrameBuffer(), 128, true, "\nAfter FillScreen\n");
     tft.setFont(Arial_24_Bold);
     tft.setTextColor(NT35510_WHITE);
     tft.setCursor(0, 0);
@@ -489,14 +349,14 @@ void drawTestScreen() {
 
     tft.drawRect(0, 150, 100, 50, NT35510_WHITE);
     tft.drawLine(0, 150, 100, 50, NT35510_GREEN);
-    tft.fillRectVGradient(125, 150, 50, 50, NT35510_GREEN, NT35510_YELLOW);
-    tft.fillRectHGradient(200, 150, 50, 50, NT35510_YELLOW, NT35510_GREEN);
+    tft.fillRectVGradient(175, 150, 100, 100, NT35510_GREEN, NT35510_YELLOW);
+    tft.fillRectHGradient(300, 150, 100, 100, NT35510_YELLOW, NT35510_GREEN);
 
 // Try a read rect and write rect
 #define BAND_WIDTH 30
 #define BAND_HEIGHT 50
 #define BAND_START_X 200
-#define BAND_START_Y 300
+#define BAND_START_Y 325
 
     tft.fillRect(BAND_START_X + BAND_WIDTH * 0, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, NT35510_RED);
     tft.fillRect(BAND_START_X + BAND_WIDTH * 1, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, NT35510_GREEN);
@@ -567,10 +427,10 @@ void drawTestScreen() {
     //button.drawButton();
     // Lets fill up some more of the larger screen.
 
-    tft.fillCircle(380, 220, 80, NT35510_GREEN);
-    tft.fillCircle(380, 220, 60, NT35510_BLUE);
-    tft.drawCircle(380, 220, 40, NT35510_PINK);
-    tft.drawCircle(380, 220, 20, NT35510_YELLOW);
+    tft.fillCircle(500, 220, 80, NT35510_GREEN);
+    tft.fillCircle(500, 220, 60, NT35510_BLUE);
+    tft.drawCircle(500, 220, 40, NT35510_PINK);
+    tft.drawCircle(500, 220, 20, NT35510_YELLOW);
 
     tft.fillTriangle(20, 300, 170, 300, 95, 240, NT35510_GREEN);
     tft.fillTriangle(40, 280, 150, 280, 95, 220, NT35510_PINK);
@@ -585,16 +445,42 @@ void drawTestScreen() {
     tft.setTextColor(NT35510_WHITE, NT35510_GREEN);
     tft.println("MonoBold");
 
+    tft.fillRect24BPP(500, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0));
+    tft.fillRect24BPP(500 + BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0xff, 0));
+    tft.fillRect24BPP(500 + 2 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0, 0, 0xff));
+    tft.fillRect24BPP(500 + 3 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, tft.color888(0xff, 0, 0xff));
+
+    uint32_t *pixel32_data = (uint32_t *)pixel_data;
+    for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0xff, 0xff, 0);
+    tft.writeRect24BPP(500 + 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
+    memset(pixel_data, 0, BAND_WIDTH * BAND_HEIGHT * 2);
+    tft.readRect(500 + 4 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel_data);
+    MemoryHexDump(Serial, pixel_data, BAND_WIDTH * BAND_HEIGHT * 2, true, "\nread back\n");
+
+#if 1
+    for (uint16_t i = 0; i < BAND_WIDTH * BAND_HEIGHT; i++) pixel32_data[i] = tft.color888(0x40, 0x40, 0x40);
+    tft.writeRect24BPP(500 + 5 * BAND_WIDTH, BAND_START_Y, BAND_WIDTH, BAND_HEIGHT, pixel32_data);
+#endif
+
+
     // Lets see the colors at the 4 corners:
     Serial.printf("UL:%x UR:%x, LL:%x, LR:%x\n", tft.readPixel(0, 0), tft.readPixel(tft.width() - 1, 0),
                   tft.readPixel(tft.height() - 1, 0), tft.readPixel(tft.width() - 1, tft.height() - 1));
 
+    //if (use_fb) {
+    //    arm_dcache_flush(tft.getFrameBuffer(), tft.width() * tft.height() * 3);
+    //    MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
+    //}
+    //    uint8_t *pb = (uint8_t*)tft.getFrameBuffer();
+    //    for (int i=0; i < 256;i++) *pb++ = i;
+    if (use_fb)
+        MemoryHexDump(Serial, tft.getFrameBuffer(), tft.width() * 8, true, "\nFrame Buffer start\n");
     if (use_dma) {
         Serial.println("$$$ Using UpdateScreenAsync");
         tft.updateScreenAsync();
     } else {
+        // setup for part of FB to see what order we get things.
         tft.updateScreen();
-
     }
 
     Serial.println(millis() - start_time, DEC);

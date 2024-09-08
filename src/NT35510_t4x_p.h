@@ -10,9 +10,7 @@
 
 #include "Teensy_Parallel_GFX.h"
 
-#define SHIFTNUM 4            // number of shifters used (must be 1, 2, 4, or 8)
-#define SHIFTER_DMA_REQUEST (_write_shifter + SHIFTNUM - 1) // only 0, 1, 2, 3 expected to work
-#define SHIFTER_IRQ (_write_shifter + SHIFTNUM - 1)
+#define NT35510_MAX_SHIFTNUM 4            // number of shifters used (must be 1, 2, 4, or 8)
 
 #define FLEXIO_ISR_PRIORITY 64 // interrupt is timing sensitive, so use relatively high priority (supersedes USB)
 
@@ -162,7 +160,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
                        uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
                        uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7,
                        uint8_t d8=0xff, uint8_t d9=0xff, uint8_t d10=0xff, uint8_t d11=0xff,
-                       uint8_t d12=0xff, uint8_t d13=0xff, uint8_t d14=0xff, uint8_t d15=0xff);
+                       uint8_t d12=0xff, uint8_t d13=0xff, uint8_t d14=0xff, uint8_t d15=0xff,
+                       uint8_t d16=0xff, uint8_t d17=0xff);
 
     uint8_t setBitDepth(uint8_t bitDepth);
     uint8_t getBitDepth();
@@ -195,6 +194,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     
     // Called by GFX to do updateScreenAsync and new writeRectAsync(;
     bool writeRectAsyncFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors);
+    bool _fForceIRQ = false;
+    void forceRectAsyncToUseIRQ(bool fForceIRQ) {_fForceIRQ = fForceIRQ;}
     bool writeRectAsyncActiveFlexIO();
 
     // void pushPixels16bitTearing(uint16_t * pcolors, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2 );
@@ -203,9 +204,10 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     // Warning these APIS currently do not look for or 
     // use frame buffer. 
-    void drawPixel24BPP(int16_t x, int16_t y, uint32_t color);
-    void fillRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color);
-    bool writeRect24BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint32_t *pixels);
+    void drawPixel24BPPFlexIO(int16_t x, int16_t y, uint32_t color);
+    void fillRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color);
+    bool writeRect24BPPFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, int16_t w_image, const uint32_t *pixels);
+    void updateScreen24BPPFlexIO(); // update screen when 24 bit buffer
 
 
     /**************************************************************/
@@ -299,6 +301,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
 
     void beginWrite16BitColors();
     void write16BitColor(uint16_t color);
+    void write24BitColor(uint32_t color32);
+    
     void endWrite16BitColors();
 //    void write16BitColor(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, const uint16_t *pcolors, uint16_t count);
     void updateScreenFlexIO();
@@ -316,11 +320,12 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     IMXRT_FLEXIO_t *_pflexio_imxrt;
     const FlexIOHandler::FLEXIO_Hardware_t *hw;
     static DMAChannel flexDma;
-    static DMASetting _dmaSettings[2];
+    static DMASetting _dmaSettings[12];
 
     uint8_t _baud_div = 20;
 
-    uint8_t _bitDepth = 16;
+    // Moved to GFX class
+//    uint8_t _bitDepth = 16;
     uint8_t _rotation = 0;
     uint8_t MADCTL[5];
 
@@ -333,7 +338,7 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     int8_t _dc, _cs, _rst;
 
     // The Teensy IO pins used for data and Read and Write
-    uint8_t _data_pins[16], _wr_pin, _rd_pin;
+    uint8_t _data_pins[18], _wr_pin, _rd_pin;
 
     uint8_t _flexio_D0, _flexio_WR, _flexio_RD; // which flexio pins do they map to
     uint8_t _write_shifter = 0;
@@ -402,7 +407,8 @@ class NT35510_t4x_p : public Teensy_Parallel_GFX {
     volatile uint32_t *_irq_readPtr;
     uint8_t  _irq_bytes_per_shifter;
     uint16_t _irq_bytes_per_burst;
-    uint32_t finalBurstBuffer[SHIFTNUM];
+    uint32_t finalBurstBuffer[NT35510_MAX_SHIFTNUM];
+    uint8_t _cnt_flexio_shifters = NT35510_MAX_SHIFTNUM; // defaults to 4... maybe...
 
 };
 #endif //__cplusplus
