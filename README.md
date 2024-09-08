@@ -6,7 +6,7 @@
 nor can I guarantee that this library will work with other libraries. Use at your own risk
 
 This library can communicate with an NT35510 based TFT LCD via a parallel interface (8080).
-I am currently experimenting with it using 8, 16, and 18 bit data bus. 
+I am currently experimenting with it using 8-, 16-, and 18-bit data bus. 
 
 This driver uses FlexIO to talk to the device, on some Teensy boards, asynchronous updates
 are done using DMA, on other using interrupts.  This depends on which FlexIO object that
@@ -15,9 +15,9 @@ is used.  FlexIO1 and 2 supports DMA, whereas FelexIO3 does not
 It utilizes FlexIO and DMA to write data to the screen while offloading the task from the CPU.
 
 ## Valid FlexIO pins
-The driver requires that all of the data pins (either 8 or 16 or 18) must be consecutive
-flexio pins with a minor exception for the T4 described later, in addition to this it
-requires two additional flexio pins on the same Flexio object that is used for Read(RD)
+The driver requires that all the data pins (either 8 or 16 or 18) must be consecutive
+FlexIO pins with a minor exception for the T4 described later, in addition to this it
+requires two additional FlexIO pins on the same FlexIOobject that is used for Read(RD)
 and Write(WR)
 
 **WARNING:** As I am experimenting with different bus widths and data widths and the like,
@@ -36,21 +36,21 @@ FlexIO3:
 	Flex Pin Order: flex:pin
 		 0:19 1:18 2:14 3:15 4:40 5:41 6:17 7:16 8:22 9:23 10:20 11:21 12:38 13:39 14:26 15:27 16:8 17:7 18:36 19:37 28:35 29:34
 ```
-This board should support all 3 bus widths:  The default pins for 8 bit bus that have been setup are:
+This board should support all 3 bus widths:  The default pins for 8-bit bus that have been setup are:
 	Data pins: 19 18 14 15 40 41 17 16 WR:36 RD:37
- 	WR: 36  RD: 37
-For 16 bit mode it adds in the data pins:  22 23 20 21 38 39 26 27
-and 18 bit moade adds: 8 and 7
+ 	WR: 36 RD: 37
+For 16-bit mode it adds in the data pins:  22 23 20 21 38 39 26 27
+and 18-bit mode adds: 8 and 7
 
-Again this is the defaults that I setup in the NT35510_t4x_p_default_flexio_pins.h file,
+Again, this is the defaults that I setup in the NT35510_t4x_p_default_FlexIO_pins.h file,
 You can choose to update this to start with a different first data pin, which will dictate the others:
-For example you could choose data pin 0 to be pin 40, in which case D0-D7 would be: 40 41 17 16 22 23 20 21
+For example, you could choose data pin 0 to be pin 40, in which case D0-D7 would be: 40 41 17 16 22 23 20 21
 
 ### Teensy 4
 Uses FlexIO3 which does not have DMA support.
 
 The Teensy 4 does not have any FlexIO object with 8 consecutive FlexIO pins.  The closest it has is FlexIO3 with two groups
-of 4 pins, with a gap of 2 between the two groups.  So special code that acts like there are 10 flexIO pins, and it
+of 4 pins, with a gap of 2 between the two groups.  So special code that acts like there are 10 FlexIO pins, and it
 updates each byte output or input to convert 8 bits to 10 or 10 bits to 8.
 The only valid pins for this are:
 
@@ -80,7 +80,7 @@ FlexIO2:
 		 0:10 1:12 2:11 3:13 4:40 5:41 6:42 7:43 8:44 9:45 10:6 11:9 12:32 16:8 17:7
 ```
 
-As you can see there are only enough FlexIO pins to support the 8 bit buss. 
+As you can see there are only enough FlexIO pins to support the 8-bit buss. 
 The currently defined default pins are:
 ```
 #define DISPLAY_WR 7  //		 B1_01  FLEXIO2:17
@@ -98,7 +98,7 @@ The currently defined default pins are:
 
 ### experimental boards DEVBRD 4 and DEVBRD 4.5
 These are setup using my modified Teensy core that added some variant support,
-and the variant DevBoard 4.0.  Note the variant is based off of Micromod
+and the variant DevBoard 4.0.  Note the variant is based off Micromod
 
 We are using FlexIO2, but could also use FleIO3
 ```
@@ -144,8 +144,8 @@ Default pins:
 
 ### experimental boards DEVBRD 5
 Setup using my modified Teensy core that added some variant support,
-and the variant DevBoard 4.0.  Note the variant is based off of Micromod
-Again can use FlexIO2 (DMA) or FlexIO3 (INT), we are using 2
+and the variant DevBoard 4.0.  Note the variant is based off Micromod
+Can use FlexIO2 (DMA) or FlexIO3 (INT), we are using 2
 
 ```
 FlexIO2:
@@ -192,9 +192,9 @@ The current default pins (used by my shield for DB5)
 #define DISPLAY_D17 53	//		 FlexIO2:21  // And CS pin
 
 ```
-Note: this pinout is screwed up for 18 bit mode as I choose to put RD/WR on the
+Note: this pinout is screwed up for 18-bit mode as I choose to put RD/WR on the
 logical pins for D16 and D17, So in this case I mucked up the setup, with
-stacked header and sumpers aind moved RD to 55... 
+stacked header and jumpers and moved RD to 55... 
 
 
 ## Include files and Constructor
@@ -220,4 +220,4 @@ The default baud rate is 20Mhz
 
 This library has most of the graphic primitives that we have in most of our SPI based tft drivers such as
 my ILI9341_t3n library.
-<More updates updates to come>
+<More updates to come>
