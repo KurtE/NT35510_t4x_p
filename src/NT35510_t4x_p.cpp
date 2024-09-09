@@ -2386,7 +2386,7 @@ void NT35510_t4x_p::fillRectFlexIO(int16_t x, int16_t y, int16_t w, int16_t h, u
                 _pflexio_imxrt->SHIFTBUF[_write_shifter] = color32; 
             }
         } else {
-            while (length) {
+            while (length--) {
                 waitWriteShiftStat(__LINE__);
                 _pflexio_imxrt->SHIFTBUF[_write_shifter] = generate_output_word(color >> 8);
 
