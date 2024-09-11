@@ -1243,7 +1243,8 @@ FASTRUN uint8_t NT35510_t4x_p::readCommand(uint16_t const cmd) {
     } else if (_bus_width == 18) {
         waitReadShiftStat(__LINE__);
         // digitalToggleFast(2);
-        uint32_t dummy32 = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16;
+        uint32_t dummy32 __attribute__((unused));
+        dummy32 = _pflexio_imxrt->SHIFTBUF[_read_shifter] >> 16;
         waitReadShiftStat(__LINE__);
         // digitalToggleFast(2);
         data = _pflexio_imxrt->SHIFTBUF[_read_shifter];

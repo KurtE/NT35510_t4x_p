@@ -17,9 +17,9 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 28
-#define BUS_WIDTH 18
-#define BIT_DEPTH 18
+#define NT35510X_SPEED_MHZ 30
+#define BUS_WIDTH 8
+#define BIT_DEPTH 16
 
 inline uint32_t color565To666(uint16_t color) {
     //        G and B                        R
@@ -44,7 +44,7 @@ inline uint16_t color666To565(uint32_t color) {
 #include <Fonts/FreeMonoBoldOblique12pt7b.h>
 #include <Fonts/FreeSerif12pt7b.h>
 
-#define ROTATION 1
+#define ROTATION 3
 
 #define KURTS_MICROMOD
 
@@ -151,6 +151,7 @@ void setup() {
 
 
     tft_frame_buffer = (uint8_t *)extmem_malloc(frame_buffer_size + 36);
+    Serial.printf(" %u %p\n", frame_buffer_size, tft_frame_buffer);
 
 #endif
     Serial.println(NT35510X_SPEED_MHZ);
@@ -158,13 +159,17 @@ void setup() {
     pinMode(24, INPUT_PULLDOWN);
     delay(10);  // plenty of time
     // if the user tied this pin to 3.3v then try 16 bit bus...
-    if (digitalRead(24)) tft.setBusWidth(16);
+    Serial.printf("Pin 24, %u\n", digitalRead(24));
+    tft.setBusWidth(digitalRead(24)? 16 : 8);
 #endif
 
+    Serial.println("Before tft.begin"); Serial.flush();
     tft.begin(NT35510X, NT35510X_SPEED_MHZ);
 
+    Serial.printf("Before setBitDepth: %u\n", BIT_DEPTH); Serial.flush();
     tft.setBitDepth(BIT_DEPTH);
 
+    Serial.println("Before displayInfo"); Serial.flush();
     tft.displayInfo();
 
     // Frame buffer will not fit work with malloc see if
@@ -173,7 +178,9 @@ void setup() {
         tft.setFrameBuffer((uint16_t *)(((uintptr_t)tft_frame_buffer + 31) & ~((uintptr_t)(31))), BIT_DEPTH);
     }
     tft.setRotation(ROTATION);
+    Serial.println("Before Fill Screen BLACK"); Serial.flush();
     tft.fillScreen(NT35510_BLACK);
+    Serial.println("After Fill Screen BLACK"); Serial.flush();
     Serial.printf("Screen width:%u height:%u\n", tft.width(), tft.height());
 
     delay(500);
