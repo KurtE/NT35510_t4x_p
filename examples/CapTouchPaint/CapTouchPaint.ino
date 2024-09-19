@@ -18,13 +18,14 @@
 #define ROTATION 3
 
 #include <Wire.h>  // this is needed for FT6206
-#include <Adafruit_FT6206.h>
+#include <FT6x36_t4.h>
 #include <NT35510_t4x_p.h>
 #include <Teensy_Parallel_GFX.h>
 #include <Adafruit_GFX.h>  // Core graphics library
 
 // The FT6206 uses hardware I2C (SCL/SDA)
-Adafruit_FT6206 ctp = Adafruit_FT6206();
+//Adafruit_FT6206 ctp = Adafruit_FT6206();
+FT6x36_t4 ctp(22);
 
 #ifdef ARDUINO_TEENSY41
 NT35510_t4x_p tft = NT35510_t4x_p(10, 8, 9);  //(dc, cs, rst)
@@ -92,7 +93,8 @@ void setup(void) {
 
     Serial.println("\n*** Start Touch controller ***");
     Wire.begin();
-    if (!ctp.begin(40, &Wire, 0x38)) {  // pass in 'sensitivity' coefficient and I2C bus
+    //if (!ctp.begin(40, &Wire, 0x38)) {  // pass in 'sensitivity' coefficient and I2C bus
+    if (!ctp.begin(&Wire, 0x38)) {  // pass in 'sensitivity' coefficient and I2C bus
         Serial.println("Couldn't start FT6206 touchscreen controller");
         while (1) delay(10);
     }
@@ -114,6 +116,12 @@ void setup(void) {
     currentcolor = NT35510_RED;
 }
 
+// quick and dirty conversion struct;
+typedef struct {
+    uint16_t x;
+    uint16_t y;
+} point_t;
+
 void loop() {
     // Wait for a touch
     if (!ctp.touched()) {
@@ -121,29 +129,37 @@ void loop() {
     }
 
     // Retrieve a point
-    TS_Point p = ctp.getPoint();
+    point_t p;
+    //TS_Point p = ctp.getPoint();
+    ctp.touchPoint(p.x, p.y);
 
-  // Print out raw data from screen touch controller
-  Serial.print("X = "); Serial.print(p.x);
-  Serial.print("\tY = "); Serial.print(p.y);
-  Serial.print(" -> ");
+    // Print out raw data from screen touch controller
 
-    // flip it around to match the screen.
-    #if ROTATION == 3
+    /*
+    Serial.print("X = ");
+    Serial.print(p.x);
+    Serial.print("\tY = ");
+    Serial.print(p.y);
+    Serial.print(" -> ");
+    */
+
+// flip it around to match the screen.
+#if ROTATION == 3
     int y = map(p.x, 0, 480, 0, tft.height());
-    p.x = map(p.y, 768,0, 0, tft.width());
+    p.x = map(p.y, 768, 0, 0, tft.width());
     p.y = y;
-    #else
+#else
     p.x = map(p.x, 0, 240, 240, 0);
     p.y = map(p.y, 0, 320, 320, 0);
-    #endif
+#endif
     // Print out the remapped (rotated) coordinates
+    /*
     Serial.print("(");
     Serial.print(p.x);
     Serial.print(", ");
     Serial.print(p.y);
     Serial.println(")");
-
+    */
 
     if (p.y < BOXSIZE) {
         oldcolor = currentcolor;
