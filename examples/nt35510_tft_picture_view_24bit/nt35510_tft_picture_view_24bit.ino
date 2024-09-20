@@ -54,8 +54,8 @@
 //-----------------------------------------------------------------------------
 #define NT35510X NT35510
 #define NT35510X_SPEED_MHZ 28
-#define BUS_WIDTH 18
-#define BIT_DEPTH 18
+#define BUS_WIDTH 16
+#define BIT_DEPTH 24
 #define TFT_ROTATION 1
 
 #ifdef ARDUINO_TEENSY41
@@ -1131,9 +1131,9 @@ void processPNGFile(const char *name, bool fErase) {
             }
         }
 
-        if (fErase && (((g_image_width / g_image_scale) < g_tft_width) || ((g_image_height / g_image_scale) < g_image_height))) {
+        //if (fErase && (((g_image_width / g_image_scale) < g_tft_width) || ((g_image_height / g_image_scale) < g_image_height))) {
             FillScreen((uint16_t)g_background_color);
-        }
+        //}
 
         if (g_center_image) {
             g_image_offset_x = (g_tft_width - (png.getWidth() / g_image_scale)) / 2;

@@ -1043,6 +1043,10 @@ FLASHMEM bool NT35510_t4x_p::setFlexIOPins(uint8_t write_pin, uint8_t rd_pin, ui
 FASTRUN void NT35510_t4x_p::FlexIO_Init() {
     /* Get a FlexIO channel */
     // lets assume D0 is the valid one...
+    DBGPrintf("FlexIO pins: data: %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u WR:%u RD:%u\n",
+              _data_pins[0], _data_pins[1], _data_pins[2], _data_pins[3], _data_pins[4], _data_pins[5], _data_pins[6], _data_pins[7],
+              _data_pins[8], _data_pins[9], _data_pins[10], _data_pins[11], _data_pins[12], _data_pins[13], _data_pins[14], _data_pins[15],
+              _data_pins[16], _data_pins[17], _wr_pin, _rd_pin);
     DBGPrintf("FlexIO_Init: D0:%u bus_width:%u WR:%u RD:%u\n", _data_pins[0],  _bus_width, _wr_pin, _rd_pin);
     DBGFlush();
     _pFlex = FlexIOHandler::mapIOPinToFlexIOHandler(_data_pins[0], _flexio_D0);

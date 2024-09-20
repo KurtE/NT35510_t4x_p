@@ -15,6 +15,7 @@
 #define NT35510X_SPEED_MHZ 24
 #define BUS_WIDTH 8
 #define BIT_DEPTH 16
+#define CTP_INT_PIN 22 // 0xff if pin is not connected
 #define ROTATION 3
 
 #include <Wire.h>  // this is needed for FT6206
@@ -25,7 +26,7 @@
 
 // The FT6206 uses hardware I2C (SCL/SDA)
 //Adafruit_FT6206 ctp = Adafruit_FT6206();
-FT6x36_t4 ctp(22);
+FT6x36_t4 ctp(CTP_INT_PIN);
 
 #ifdef ARDUINO_TEENSY41
 NT35510_t4x_p tft = NT35510_t4x_p(10, 8, 9);  //(dc, cs, rst)
@@ -93,13 +94,14 @@ void setup(void) {
 
     Serial.println("\n*** Start Touch controller ***");
     Wire.begin();
-    //if (!ctp.begin(40, &Wire, 0x38)) {  // pass in 'sensitivity' coefficient and I2C bus
-    if (!ctp.begin(&Wire, 0x38)) {  // pass in 'sensitivity' coefficient and I2C bus
-        Serial.println("Couldn't start FT6206 touchscreen controller");
+//    if (!ctp.begin(&Wire, 0x38)) {  // Optional pass in which Wire object and device ID
+    if (!ctp.begin()) {  // Use default: Wire and 0x38
+        Serial.println("Couldn't start FT6236 touchscreen controller");
         while (1) delay(10);
     }
 
     Serial.println("Capacitive touchscreen started");
+    ctp.showAllRegisters();
 
     tft.fillScreen(NT35510_BLACK);
 
@@ -201,5 +203,9 @@ void loop() {
     }
     if (((p.y - PENRADIUS) > BOXSIZE) && ((p.y + PENRADIUS) < tft.height())) {
         tft.fillCircle(p.x, p.y, PENRADIUS, currentcolor);
+    }
+    if (Serial.available()) {
+      while(Serial.read() != -1) {}
+      ctp.showAllRegisters();
     }
 }

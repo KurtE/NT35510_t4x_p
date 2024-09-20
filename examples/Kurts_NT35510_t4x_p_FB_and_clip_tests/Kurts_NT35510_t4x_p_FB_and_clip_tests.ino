@@ -17,9 +17,9 @@
 // easier for testing
 
 #define NT35510X NT35510
-#define NT35510X_SPEED_MHZ 30
-#define BUS_WIDTH 8
-#define BIT_DEPTH 16
+#define NT35510X_SPEED_MHZ 24
+#define BUS_WIDTH 16
+#define BIT_DEPTH 24
 
 inline uint32_t color565To666(uint16_t color) {
     //        G and B                        R
