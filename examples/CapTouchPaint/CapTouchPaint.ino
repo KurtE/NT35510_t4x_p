@@ -23,10 +23,12 @@
 
 #else
 #define TOUCH_WIRE Wire
-#define CTP_INT_PIN 22 // 0xff if pin is not connected
+#define CTP_INT_PIN 22  // 0xff if pin is not connected
 #endif
 
-#define SHOW_TOUCH_INFO
+#define MAX_TOUCH 1  // can be 1 or 2, but we don't use 2nd so...
+
+//#define SHOW_TOUCH_INFO
 
 #include <Wire.h>  // this is needed for FT6206
 #include <FT6x36_t4.h>
@@ -36,7 +38,7 @@
 
 // The FT6206 uses hardware I2C (SCL/SDA)
 //Adafruit_FT6206 ctp = Adafruit_FT6206();
-FT6x36_t4 ctp(CTP_INT_PIN);
+FT6x36_t4 ctp(CTP_INT_PIN, MAX_TOUCH);
 
 #ifdef ARDUINO_TEENSY41
 NT35510_t4x_p tft = NT35510_t4x_p(10, 8, 9);  //(dc, cs, rst)
@@ -65,9 +67,15 @@ int oldcolor, currentcolor;
 
 void setup(void) {
     Serial.begin(115200);
-    while (!Serial) delay(10);  // pause the serial port
+    while (!Serial && millis() < 5000) delay(10);  // pause the serial port
+    if (CrashReport) {
+        Serial.print(CrashReport);
+        Serial.println("Press any key to continue");
+        while (Serial.read() == -1) {}
+        while (Serial.read() != -1) {}
+    }
 
-    Serial.println(F("Cap Touch Paint!"));
+    Serial.println(F("NT35510 Cap Touch Paint!"));
 
 #if defined(ARDUINO_TEENSY_DEVBRD4)
     Serial.print("DEVBRD4 - ");
@@ -104,7 +112,7 @@ void setup(void) {
 
     Serial.println("\n*** Start Touch controller ***");
     TOUCH_WIRE.begin();
-//    if (!ctp.begin(&Wire, 0x38)) {  // Optional pass in which Wire object and device ID
+    //    if (!ctp.begin(&Wire, 0x38)) {  // Optional pass in which Wire object and device ID
     if (!ctp.begin(&TOUCH_WIRE)) {  // Use default: Wire and 0x38
         Serial.println("Couldn't start FT6236 touchscreen controller");
         while (1) delay(10);
@@ -134,9 +142,23 @@ typedef struct {
     uint16_t y;
 } point_t;
 
+uint32_t time_sum = 0;
+uint32_t time_count = 0;
+
 void loop() {
+    // Check for Serial at start, so don't have be touching display to get touch information...
+    if (Serial.available()) {
+        while (Serial.read() != -1) {}
+        ctp.showAllRegisters();
+    }
     // Wait for a touch
+    elapsedMicros em;
     if (!ctp.touched()) {
+        if (time_count) {
+            Serial.printf("touch cnt: %u dt: %u avg:%u\n", time_count, time_sum, time_sum / time_count);
+            time_sum = 0;
+            time_count = 0;
+        }
         return;
     }
 
@@ -145,15 +167,18 @@ void loop() {
     //TS_Point p = ctp.getPoint();
     ctp.touchPoint(p.x, p.y);
 
+    time_sum += em;
+    time_count++;
+
     // Print out raw data from screen touch controller
 
-    /*
+    #ifdef SHOW_TOUCH_INFO
     Serial.print("X = ");
     Serial.print(p.x);
     Serial.print("\tY = ");
     Serial.print(p.y);
     Serial.print(" -> ");
-    */
+    #endif
 
 // flip it around to match the screen.
 #if ROTATION == 3
@@ -165,13 +190,13 @@ void loop() {
     p.y = map(p.y, 0, 320, 320, 0);
 #endif
     // Print out the remapped (rotated) coordinates
-    /*
+    #ifdef SHOW_TOUCH_INFO
     Serial.print("(");
     Serial.print(p.x);
     Serial.print(", ");
     Serial.print(p.y);
     Serial.println(")");
-    */
+    #endif
 
     if (p.y < BOXSIZE) {
         oldcolor = currentcolor;
@@ -213,9 +238,5 @@ void loop() {
     }
     if (((p.y - PENRADIUS) > BOXSIZE) && ((p.y + PENRADIUS) < tft.height())) {
         tft.fillCircle(p.x, p.y, PENRADIUS, currentcolor);
-    }
-    if (Serial.available()) {
-      while(Serial.read() != -1) {}
-      ctp.showAllRegisters();
     }
 }
